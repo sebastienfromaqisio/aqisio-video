@@ -93,4 +93,98 @@
 
   <script>
     /* === CONFIG === */
-    con
+    const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzvwLzbuy8rgvtRELW9ZycZBDvCUdRjQGsoO1olCeXKILoaXug3dkOCIXLPORYpg6Lc5w/exec";
+    const videoId = "5032da31754eb596edf1e9d68cbe031e";
+    const qs = new URLSearchParams(location.search);
+    const prospectId = qs.get("p") || "unknown";
+    const sessionId = (crypto.randomUUID && crypto.randomUUID()) || Date.now() + "-" + Math.random();
+    const userAgent = navigator.userAgent;
+
+    /* === PLAYER === */
+    const player = Stream(document.getElementById("stream-player"));
+
+    // Autoplay robuste
+    player.play().catch(async () => {
+      try {
+        player.muted = true;
+        await player.play();
+      } catch (_) {}
+    });
+
+    /* === TRACKING : secondes uniques vues === */
+    let duration = 0;
+    let watchedMap = Object.create(null);
+    let lastSentAt = 0;
+
+    async function refreshDuration() {
+      try {
+        duration = Math.floor(await player.duration);
+      } catch (_) {}
+    }
+    refreshDuration();
+    setInterval(refreshDuration, 3000);
+
+    const pollMs = 500;
+    setInterval(async () => {
+      try {
+        const paused = await player.paused;
+        if (paused) return;
+        const t = await player.currentTime;
+        watchedMap[Math.floor(t)] = true;
+        const now = Date.now();
+        if (now - lastSentAt > 10000) {
+          lastSentAt = now;
+          sendSummary(false);
+        }
+      } catch (_) {}
+    }, pollMs);
+
+    function computeSummary() {
+      const secondsWatched = Object.keys(watchedMap).length;
+      const percent =
+        duration > 0 ? Math.min(100, Math.round((secondsWatched / duration) * 100)) : 0;
+      return { secondsWatched, percent };
+    }
+
+    async function sendSummary(final = false) {
+      const { secondsWatched, percent } = computeSummary();
+      document.getElementById("debug").textContent = `Vu ~${secondsWatched}s / ${duration}s (${percent}%)` + (final ? " [final]" : "");
+
+      const payload = {
+        prospectId,
+        videoId,
+        secondsWatched,
+        duration,
+        percent,
+        sessionId,
+        userAgent,
+        final,
+      };
+      try {
+        await fetch(WEBHOOK_URL, {
+          method: "POST",
+          // AUCUN header → évite preflight CORS
+          body: JSON.stringify(payload),
+        });
+      } catch (e) {}
+    }
+
+    // Envoie un résumé final à la fin ou quand on quitte la page
+    player.addEventListener("ended", () => {
+      sendSummary(true);
+      showCalendly();
+    });
+    window.addEventListener("beforeunload", () => sendSummary(true));
+
+    /* === CALENDLY === */
+    const overlay = document.getElementById("overlay");
+    const closeBtn = document.getElementById("close");
+    function showCalendly() {
+      overlay.style.display = "flex";
+    }
+    closeBtn.addEventListener("click", () => {
+      overlay.style.display = "none";
+    });
+  </script>
+</body>
+</html>
