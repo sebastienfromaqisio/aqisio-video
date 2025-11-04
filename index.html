@@ -6,18 +6,59 @@
   <title>Vidéo de prospection Aqisio</title>
   <style>
     :root { color-scheme: dark; }
-    body{ margin:0; background:#0b0b0b; color:#fff;
-          font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-    .wrap{ display:grid; place-items:center; min-height:100dvh; padding:24px; }
-    .player{ width:min(960px,100%); aspect-ratio:16/9; position:relative; }
-    iframe{ width:100%; height:100%; border:0; border-radius:16px; }
-    .note{ opacity:.7; margin-top:12px; font-size:.9rem; }
+    body {
+      margin: 0;
+      background: #0b0b0b;
+      color: #fff;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    .wrap {
+      display: grid;
+      place-items: center;
+      min-height: 100dvh;
+      padding: 24px;
+    }
+    .player {
+      width: min(960px, 100%);
+      aspect-ratio: 16/9;
+      position: relative;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      border-radius: 16px;
+    }
+    .note {
+      opacity: 0.7;
+      margin-top: 12px;
+      font-size: 0.9rem;
+    }
 
     /* Overlay Calendly */
-    .overlay{ position:fixed; inset:0; display:none; background:rgba(0,0,0,.8);
-              align-items:center; justify-content:center; z-index:9999; padding:16px; }
-    .card{ width:min(800px,100%); background:#111; border-radius:12px; padding:12px; }
-    .close{ display:inline-block; margin-bottom:8px; cursor:pointer; opacity:.7; font-size:.9rem; }
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      background: rgba(0, 0, 0, 0.8);
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 16px;
+    }
+    .card {
+      width: min(800px, 100%);
+      background: #111;
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .close {
+      display: inline-block;
+      margin-bottom: 8px;
+      cursor: pointer;
+      opacity: 0.7;
+      font-size: 0.9rem;
+    }
   </style>
 </head>
 <body>
@@ -48,21 +89,21 @@
 
   <script>
     /***** CONFIG *****/
-    const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbw2zW3VYkhgIhuB2VpaoeXP_xoNd1nT2HWkHTiTOxHO1OS9koOf9mmljqK7RpsVvDRi7w/exec";
-    const VIDEO_ID    = "5032da31754eb596edf1e9d68cbe031e"; // fixe pour cette vidéo
+    const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz9alEU_7igvcCej_rumzU7mtVQFYiCbUmczzNXpXVzU-1Uz37hHUhAe90z_I4Vstus/exec";
+    const VIDEO_ID    = "5032da31754eb596edf1e9d68cbe031e"; // ID Cloudflare Stream
     const qs          = new URLSearchParams(location.search);
     const prospectId  = qs.get("p") || "unknown";
     const userAgent   = navigator.userAgent;
 
-    /***** STATE (session) *****/
+    /***** ÉTAT DE SESSION *****/
     let sessionId, ended, duration, watchedMap, lastSecSent;
 
     function newSession() {
       sessionId  = (crypto.randomUUID && crypto.randomUUID()) || (Date.now()+"-"+Math.random());
       ended      = false;
       duration   = 0;
-      watchedMap = Object.create(null); // ensemble de secondes uniques vues
-      lastSecSent = -1;                 // dernière seconde envoyée (pour limiter les envois)
+      watchedMap = Object.create(null);
+      lastSecSent = -1;
       document.getElementById("debug").textContent = "Session: " + sessionId;
     }
     newSession();
@@ -75,60 +116,67 @@
       try { player.muted = true; await player.play(); } catch(_) {}
     });
 
-    // Durée : refresh régulier
+    // Rafraîchit la durée de la vidéo régulièrement
     async function refreshDuration() {
       try { duration = Math.floor(await player.duration); } catch(_) {}
     }
-    refreshDuration(); setInterval(refreshDuration, 3000);
+    refreshDuration();
+    setInterval(refreshDuration, 3000);
 
-    /***** TRACKING (ping conditionnel 1 Hz, 1 ligne/session) *****/
-    // -> on n'envoie qu'à la découverte d'une nouvelle seconde unique
+    /***** TRACKING (ping conditionnel chaque seconde) *****/
     async function tick() {
       if (ended) return;
       try {
         const paused = await player.paused;
         if (paused) return;
 
-        const t = await player.currentTime; // float (s)
+        const t = await player.currentTime;
         const sec = Math.floor(t);
         if (!watchedMap[sec]) {
           watchedMap[sec] = true;
-
-          // n'envoie que si cette "seconde" n'a pas déjà été envoyée (évite spam)
           if (sec !== lastSecSent) {
             lastSecSent = sec;
-            sendSummary(false); // upsert partiel (1/s max en lecture continue)
+            sendSummary(false);
           }
         }
       } catch(_) {}
     }
-    setInterval(tick, 1000); // 1 Hz
+    setInterval(tick, 1000); // toutes les secondes
 
     function computeSummary() {
       const secondsWatched = Object.keys(watchedMap).length;
-      const percent = duration > 0 ? Math.min(100, Math.round((secondsWatched / duration) * 100)) : 0;
+      const percent = duration > 0
+        ? Math.min(100, Math.round((secondsWatched / duration) * 100))
+        : 0;
       return { secondsWatched, percent };
     }
 
     async function sendSummary(final=false) {
       const { secondsWatched, percent } = computeSummary();
       document.getElementById("debug").textContent =
-        `Session: ${sessionId} — ${secondsWatched}s / ${duration}s (${percent}%)` + (final ? " [final]" : "");
+        `Session: ${sessionId} — ${secondsWatched}s / ${duration}s (${percent}%)` +
+        (final ? " [final]" : "");
 
       const payload = {
-        prospectId, videoId: VIDEO_ID, secondsWatched, duration, percent,
-        sessionId, userAgent, final
+        prospectId,
+        videoId: VIDEO_ID,
+        secondsWatched,
+        duration,
+        percent,
+        sessionId,
+        userAgent,
+        final
       };
+
       try {
         await fetch(WEBHOOK_URL, {
           method: "POST",
-          // PAS de headers -> évite preflight CORS
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload) // aucun header -> évite CORS preflight
         });
-      } catch(e) { /* silencieux MVP */ }
+      } catch(e) {}
     }
 
-    // Fin de vidéo -> ping final, stop pings, ouvre Calendly
+    // Fin de vidéo → ping final, stop ping, affiche Calendly
     player.addEventListener("ended", () => {
       if (ended) return;
       ended = true;
@@ -136,22 +184,19 @@
       showCalendly();
     });
 
-    // Replay -> si on était en "ended" et que l'utilisateur relance au début, on crée une NOUVELLE session
+    // Replay → nouvelle session si redémarrage au début
     player.addEventListener("play", async () => {
       if (!ended) return;
       try {
         const t = await player.currentTime;
-        if (t < 1) {        // relance depuis le début => nouvelle session
-          newSession();
-          // on enverra la première MAJ dès la 1ère seconde vue
-        }
+        if (t < 1) newSession();
       } catch(_) {}
     });
 
     /***** CALENDLY *****/
     const overlay = document.getElementById("overlay");
     const closeBtn = document.getElementById("close");
-    function showCalendly(){ overlay.style.display = "flex"; }
+    function showCalendly() { overlay.style.display = "flex"; }
     closeBtn.addEventListener("click", () => { overlay.style.display = "none"; });
   </script>
 </body>
