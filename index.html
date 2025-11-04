@@ -30,34 +30,16 @@
       border-radius: 16px;
     }
     .note {
-      opacity: 0.7;
+      opacity: .7;
       margin-top: 12px;
-      font-size: 0.9rem;
+      font-size: .9rem;
     }
 
-    /* Overlay Calendly */
-    .overlay {
-      position: fixed;
-      inset: 0;
-      display: none;
-      background: rgba(0, 0, 0, 0.8);
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-      padding: 16px;
-    }
-    .card {
-      width: min(800px, 100%);
-      background: #111;
-      border-radius: 12px;
-      padding: 12px;
-    }
-    .close {
-      display: inline-block;
-      margin-bottom: 8px;
-      cursor: pointer;
-      opacity: 0.7;
-      font-size: 0.9rem;
+    /* Bloc Calendly inline (caché au départ) */
+    #calendly-block {
+      display: none;              /* <- passe à block quand la vidéo se termine */
+      width: min(960px, 100%);
+      margin: 24px auto;
     }
   </style>
 </head>
@@ -71,21 +53,21 @@
         allowfullscreen="true"></iframe>
     </div>
     <p class="note" id="debug"></p>
-  </div>
 
-  <!-- Overlay Calendly -->
-  <div class="overlay" id="overlay">
-    <div class="card">
-      <span class="close" id="close">✕ Fermer</span>
+    <!-- Calendly inline (embed) -->
+    <div id="calendly-block">
+      <!-- Début de widget en ligne Calendly -->
       <div class="calendly-inline-widget"
-           data-url="https://calendly.com/ton-compte/30min"
+           data-url="https://calendly.com/aqisio/presentation?hide_event_type_details=1&hide_gdpr_banner=1"
            style="min-width:320px;height:700px;"></div>
+      <script type="text/javascript"
+              src="https://assets.calendly.com/assets/external/widget.js" async></script>
+      <!-- Fin de widget en ligne Calendly -->
     </div>
   </div>
 
-  <!-- SDK Cloudflare Stream + Calendly -->
+  <!-- SDK Cloudflare Stream -->
   <script src="https://embed.cloudflarestream.com/embed/sdk.latest.js"></script>
-  <script src="https://assets.calendly.com/assets/external/widget.js" async></script>
 
   <script>
     /***** CONFIG *****/
@@ -99,10 +81,10 @@
     let sessionId, ended, duration, watchedMap, lastSecSent;
 
     function newSession() {
-      sessionId  = (crypto.randomUUID && crypto.randomUUID()) || (Date.now()+"-"+Math.random());
-      ended      = false;
-      duration   = 0;
-      watchedMap = Object.create(null);
+      sessionId   = (crypto.randomUUID && crypto.randomUUID()) || (Date.now()+"-"+Math.random());
+      ended       = false;
+      duration    = 0;
+      watchedMap  = Object.create(null);
       lastSecSent = -1;
       document.getElementById("debug").textContent = "Session: " + sessionId;
     }
@@ -116,7 +98,7 @@
       try { player.muted = true; await player.play(); } catch(_) {}
     });
 
-    // Rafraîchit la durée de la vidéo régulièrement
+    // Rafraîchit la durée
     async function refreshDuration() {
       try { duration = Math.floor(await player.duration); } catch(_) {}
     }
@@ -141,7 +123,7 @@
         }
       } catch(_) {}
     }
-    setInterval(tick, 1000); // toutes les secondes
+    setInterval(tick, 1000);
 
     function computeSummary() {
       const secondsWatched = Object.keys(watchedMap).length;
@@ -171,17 +153,21 @@
       try {
         await fetch(WEBHOOK_URL, {
           method: "POST",
-          body: JSON.stringify(payload) // aucun header -> évite CORS preflight
+          body: JSON.stringify(payload) // aucun header -> évite preflight CORS
         });
       } catch(e) {}
     }
 
-    // Fin de vidéo → ping final, stop ping, affiche Calendly
+    // Fin de vidéo → ping final, stop ping, affiche Calendly inline
     player.addEventListener("ended", () => {
       if (ended) return;
       ended = true;
       sendSummary(true);
-      showCalendly();
+
+      // Affiche le bloc Calendly et scroll dessus
+      const block = document.getElementById("calendly-block");
+      block.style.display = "block";
+      block.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
     // Replay → nouvelle session si redémarrage au début
@@ -189,15 +175,11 @@
       if (!ended) return;
       try {
         const t = await player.currentTime;
-        if (t < 1) newSession();
+        if (t < 1) {
+          newSession(); // nouvelle ligne (session) côté Sheets
+        }
       } catch(_) {}
     });
-
-    /***** CALENDLY *****/
-    const overlay = document.getElementById("overlay");
-    const closeBtn = document.getElementById("close");
-    function showCalendly() { overlay.style.display = "flex"; }
-    closeBtn.addEventListener("click", () => { overlay.style.display = "none"; });
   </script>
 </body>
 </html>
