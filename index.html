@@ -6,191 +6,153 @@
   <title>Vidéo de prospection Aqisio</title>
   <style>
     :root { color-scheme: dark; }
-    body { margin:0; background:#0b0b0b; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-    .wrap { display:grid; place-items:center; min-height:100dvh; padding:24px; }
-    .player { width:min(960px,100%); aspect-ratio:16/9; position:relative; }
-    iframe { width:100%; height:100%; border:0; border-radius:16px; }
-    .note { opacity:.7; margin-top:12px; font-size:.9rem; }
+    body{ margin:0; background:#0b0b0b; color:#fff;
+          font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    .wrap{ display:grid; place-items:center; min-height:100dvh; padding:24px; }
+    .player{ width:min(960px,100%); aspect-ratio:16/9; position:relative; }
+    iframe{ width:100%; height:100%; border:0; border-radius:16px; }
+    .note{ opacity:.7; margin-top:12px; font-size:.9rem; }
 
-    .overlay { position:fixed; inset:0; display:none; background:rgba(0,0,0,.8); align-items:center; justify-content:center; z-index:9999; padding:16px; }
-    .card { width:min(800px, 100%); background:#111; border-radius:12px; padding:12px; }
-    .close { display:inline-block; margin-bottom:8px; cursor:pointer; opacity:.7; font-size:.9rem; }
+    /* Overlay Calendly */
+    .overlay{ position:fixed; inset:0; display:none; background:rgba(0,0,0,.8);
+              align-items:center; justify-content:center; z-index:9999; padding:16px; }
+    .card{ width:min(800px,100%); background:#111; border-radius:12px; padding:12px; }
+    .close{ display:inline-block; margin-bottom:8px; cursor:pointer; opacity:.7; font-size:.9rem; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="player">
-      <iframe
-        id="stream-player"
+      <!-- Cloudflare Stream : ta vidéo type -->
+      <iframe id="stream-player"
         src="https://customer-g50chvgfq5q94nqo.cloudflarestream.com/5032da31754eb596edf1e9d68cbe031e/iframe?autoplay=true&muted=true"
         allow="autoplay; encrypted-media; picture-in-picture"
-        allowfullscreen="true"
-      ></iframe>
+        allowfullscreen="true"></iframe>
     </div>
     <p class="note" id="debug"></p>
   </div>
 
+  <!-- Overlay Calendly -->
   <div class="overlay" id="overlay">
     <div class="card">
       <span class="close" id="close">✕ Fermer</span>
       <div class="calendly-inline-widget"
-           data-url="https://calendly.com/aqisio/presentation"
+           data-url="https://calendly.com/ton-compte/30min"
            style="min-width:320px;height:700px;"></div>
     </div>
   </div>
 
+  <!-- SDK Cloudflare Stream + Calendly -->
   <script src="https://embed.cloudflarestream.com/embed/sdk.latest.js"></script>
   <script src="https://assets.calendly.com/assets/external/widget.js" async></script>
+
   <script>
-    /********** CONFIG **********/
-    const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxYdG7WxfZPMLeYyjSHkU-lOucEFS3hVJp5NYaTH72peJ9drCJ9qdTo2sV0xaCRRpdq/exec";
-    const videoId = "5032da31754eb596edf1e9d68cbe031e";
+    /***** CONFIG *****/
+    const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbw2zW3VYkhgIhuB2VpaoeXP_xoNd1nT2HWkHTiTOxHO1OS9koOf9mmljqK7RpsVvDRi7w/exec";
+    const VIDEO_ID    = "5032da31754eb596edf1e9d68cbe031e"; // fixe pour cette vidéo
+    const qs          = new URLSearchParams(location.search);
+    const prospectId  = qs.get("p") || "unknown";
+    const userAgent   = navigator.userAgent;
 
-    const qs = new URLSearchParams(location.search);
-    const prospectId = qs.get("p") || "unknown";
-    const sessionId = (crypto.randomUUID && crypto.randomUUID()) || Date.now()+"-"+Math.random();
+    /***** STATE (session) *****/
+    let sessionId, ended, duration, watchedMap, lastSecSent;
 
-    // Meta
-    const metaBase = {
-      prospectId,
-      videoId,
-      sessionId,
-      userAgent: navigator.userAgent,
-      page_url: location.href,
-      referrer: document.referrer,
-      viewport: `${window.innerWidth}x${window.innerHeight}`,
-      lang: navigator.language || "",
-      tz_offset: new Date().getTimezoneOffset()
-    };
+    function newSession() {
+      sessionId  = (crypto.randomUUID && crypto.randomUUID()) || (Date.now()+"-"+Math.random());
+      ended      = false;
+      duration   = 0;
+      watchedMap = Object.create(null); // ensemble de secondes uniques vues
+      lastSecSent = -1;                 // dernière seconde envoyée (pour limiter les envois)
+      document.getElementById("debug").textContent = "Session: " + sessionId;
+    }
+    newSession();
 
-    // Géoloc via IP (Option A)
-    const geo = { ip:"", city:"", region:"", country:"", latitude:"", longitude:"", precision_method:"" };
-    (async () => {
-      try {
-        const r = await fetch('https://ipapi.co/json/');
-        if (r.ok) {
-          const g = await r.json();
-          geo.ip = g.ip || "";
-          geo.city = g.city || "";
-          geo.region = g.region || g.region_name || "";
-          geo.country = g.country_name || g.country || "";
-          geo.latitude = g.latitude || "";
-          geo.longitude = g.longitude || "";
-          geo.precision_method = "ipapi";
-        }
-      } catch(e){}
-    })();
-
-    /********** Player **********/
+    /***** PLAYER *****/
     const player = Stream(document.getElementById("stream-player"));
+
+    // Autoplay robuste (mute fallback)
     player.play().catch(async () => {
-      try { player.muted = true; await player.play(); } catch(_){}
+      try { player.muted = true; await player.play(); } catch(_) {}
     });
 
-    /********** Tracking fin — buffer + batch **********/
-    const PING_INTERVAL_MS = 5000;   // ping toutes 5s
-    const MAX_BATCH_SIZE = 10;       // flush si 10 events
-    let watchedMap = {};
-    let eventBuffer = [];
-    let lastSentAt = 0;
-    let lastTime = 0;
-    let maxPct = 0;
-
-    function nowISO(){ return (new Date()).toISOString(); }
-
-    function queueEvent(evt){
-      evt.ts = evt.ts || nowISO();
-      eventBuffer.push(evt);
-      if (eventBuffer.length >= MAX_BATCH_SIZE) flushEvents();
+    // Durée : refresh régulier
+    async function refreshDuration() {
+      try { duration = Math.floor(await player.duration); } catch(_) {}
     }
+    refreshDuration(); setInterval(refreshDuration, 3000);
 
-    async function flushEvents(){
-      if (!eventBuffer.length) return;
-      const payload = {
-        meta: { ...metaBase, geo },
-        events: eventBuffer.slice()
-      };
-      eventBuffer = [];
-      try {
-        await fetch(WEBHOOK_URL, { method: "POST", body: JSON.stringify(payload) }); // pas de headers → pas de preflight
-      } catch(e) {}
-      lastSentAt = Date.now();
-    }
-
-    // Ping régulier (5s)
-    setInterval(async () => {
+    /***** TRACKING (ping conditionnel 1 Hz, 1 ligne/session) *****/
+    // -> on n'envoie qu'à la découverte d'une nouvelle seconde unique
+    async function tick() {
+      if (ended) return;
       try {
         const paused = await player.paused;
-        const t = Math.floor(await player.currentTime);
-        watchedMap[t] = true;
+        if (paused) return;
 
-        const secondsWatched = Object.keys(watchedMap).length;
-        const dur = Math.floor(await player.duration) || 0;
-        const pct = dur>0 ? Math.round((secondsWatched/dur)*100) : 0;
-        maxPct = Math.max(maxPct, pct);
+        const t = await player.currentTime; // float (s)
+        const sec = Math.floor(t);
+        if (!watchedMap[sec]) {
+          watchedMap[sec] = true;
 
-        queueEvent({ type:"ping", currentTime:t, secondsWatched, duration:dur, percent:pct });
+          // n'envoie que si cette "seconde" n'a pas déjà été envoyée (évite spam)
+          if (sec !== lastSecSent) {
+            lastSecSent = sec;
+            sendSummary(false); // upsert partiel (1/s max en lecture continue)
+          }
+        }
+      } catch(_) {}
+    }
+    setInterval(tick, 1000); // 1 Hz
 
-        if (Date.now() - lastSentAt > 30000) flushEvents();
+    function computeSummary() {
+      const secondsWatched = Object.keys(watchedMap).length;
+      const percent = duration > 0 ? Math.min(100, Math.round((secondsWatched / duration) * 100)) : 0;
+      return { secondsWatched, percent };
+    }
 
-        lastTime = t;
-        document.getElementById("debug").textContent = `Vu ~${secondsWatched}s / ${dur}s (${pct}%)`;
-      } catch(e){}
-    }, PING_INTERVAL_MS);
+    async function sendSummary(final=false) {
+      const { secondsWatched, percent } = computeSummary();
+      document.getElementById("debug").textContent =
+        `Session: ${sessionId} — ${secondsWatched}s / ${duration}s (${percent}%)` + (final ? " [final]" : "");
 
-    // Play / Pause
-    player.addEventListener("play",  async () => { queueEvent({ type:"play",  currentTime: Math.floor(await player.currentTime) }); });
-    player.addEventListener("pause", async () => { queueEvent({ type:"pause", currentTime: Math.floor(await player.currentTime) }); flushEvents(); });
+      const payload = {
+        prospectId, videoId: VIDEO_ID, secondsWatched, duration, percent,
+        sessionId, userAgent, final
+      };
+      try {
+        await fetch(WEBHOOK_URL, {
+          method: "POST",
+          // PAS de headers -> évite preflight CORS
+          body: JSON.stringify(payload)
+        });
+      } catch(e) { /* silencieux MVP */ }
+    }
 
-    // Seek / Replay
-    let seekingFrom = null;
-    player.addEventListener("seeking", async () => {
-      const t = Math.floor(await player.currentTime);
-      seekingFrom = lastTime || t;
-      if (lastTime - t > 5) queueEvent({ type:"replay", currentTime:t, rewindBy: lastTime - t });
+    // Fin de vidéo -> ping final, stop pings, ouvre Calendly
+    player.addEventListener("ended", () => {
+      if (ended) return;
+      ended = true;
+      sendSummary(true);
+      showCalendly();
     });
-    player.addEventListener("seeked", async () => {
-      const t = Math.floor(await player.currentTime);
-      queueEvent({ type:"seek", seek_from: seekingFrom, seek_to: t });
-      seekingFrom = null;
+
+    // Replay -> si on était en "ended" et que l'utilisateur relance au début, on crée une NOUVELLE session
+    player.addEventListener("play", async () => {
+      if (!ended) return;
+      try {
+        const t = await player.currentTime;
+        if (t < 1) {        // relance depuis le début => nouvelle session
+          newSession();
+          // on enverra la première MAJ dès la 1ère seconde vue
+        }
+      } catch(_) {}
     });
 
-    // Quartiles (25/50/75/95)
-    player.addEventListener("timeupdate", async () => {
-      const t = Math.floor(await player.currentTime);
-      const dur = Math.floor(await player.duration) || 0;
-      if (!dur) return;
-      const pct = Math.round((t/dur)*100);
-      [25,50,75,95].forEach(q => {
-        if (pct >= q && maxPct < q) queueEvent({ type:"quartile", quartile:q, currentTime:t });
-      });
-    });
-
-    // Calendly (CTA)
+    /***** CALENDLY *****/
     const overlay = document.getElementById("overlay");
     const closeBtn = document.getElementById("close");
-    function showCalendly(){ overlay.style.display = "flex"; queueEvent({ type:"cta_open", currentTime:lastTime }); }
+    function showCalendly(){ overlay.style.display = "flex"; }
     closeBtn.addEventListener("click", () => { overlay.style.display = "none"; });
-
-    player.addEventListener("ended", async () => {
-      const secondsWatched = Object.keys(watchedMap).length;
-      const dur = Math.floor(await player.duration) || 0;
-      const pct = dur>0 ? Math.round((secondsWatched/dur)*100) : 0;
-      queueEvent({ type:"ended", currentTime:dur, secondsWatched, duration:dur, percent:pct });
-      showCalendly();
-      await flushEvents();
-    });
-
-    // Envoi final sur fermeture d’onglet
-    window.addEventListener("beforeunload", () => {
-      try {
-        if (eventBuffer.length) {
-          const payload = JSON.stringify({ meta: { ...metaBase, geo }, events: eventBuffer });
-          if (navigator.sendBeacon) navigator.sendBeacon(WEBHOOK_URL, payload);
-          else fetch(WEBHOOK_URL, { method:"POST", mode:"no-cors", body: payload });
-        }
-      } catch(e){}
-    });
   </script>
 </body>
 </html>
