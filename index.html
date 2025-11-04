@@ -5,120 +5,67 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Vidéo de prospection Aqisio</title>
 
-  <!-- Préconnexion Calendly -->
+  <!-- Calendly perf -->
   <link rel="preconnect" href="https://assets.calendly.com" crossorigin>
   <link rel="preconnect" href="https://calendly.com" crossorigin>
   <link rel="preload" as="script" href="https://assets.calendly.com/assets/external/widget.js">
 
   <style>
     :root { color-scheme: dark; }
-    body{
-      margin:0; background:#0b0b0b; color:#fff;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    }
-    .wrap{
-      display:grid; place-items:center;
-      min-height:100dvh; padding:24px;
-    }
+    body{ margin:0; background:#0b0b0b; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    .wrap{ display:grid; place-items:center; min-height:100dvh; padding:24px; }
     .player{
-      width:min(960px,100%);
-      aspect-ratio:16/9;
-      position:relative;
-      border-radius:16px;
-      overflow:hidden;
-      box-shadow:0 10px 40px rgba(0,0,0,.45);
-      background:#000;
+      width:min(960px,100%); aspect-ratio:16/9; position:relative;
+      border-radius:16px; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,.45); background:#000;
     }
-    .player iframe{
-      width:100%; height:100%;
-      border:0; border-radius:16px;
-      position:relative;
-      z-index:1;
-      display:block;
-    }
+    .player iframe{ width:100%; height:100%; border:0; border-radius:16px; position:relative; z-index:1; display:block; }
 
-    /* === CTA EN BAS À DROITE === */
+    /* CTA bas-droite */
     .cta-btn{
-      position:absolute;
-      bottom:16px; right:16px;
-      z-index:3;
-      background:#0156CC;
-      color:#fff;
-      border:0; border-radius:16px;
-      padding:20px 36px;
-      font-weight:700;
-      font-size:22px;
-      line-height:1;
-      cursor:pointer;
-      box-shadow:0 8px 24px rgba(1,86,204,.45);
-      transition:transform .12s ease, opacity .12s ease, box-shadow .12s ease;
-      pointer-events:auto;
+      position:absolute; bottom:16px; right:16px; z-index:3;
+      background:#0156CC; color:#fff; border:0; border-radius:16px;
+      padding:20px 36px; font-weight:700; font-size:22px; line-height:1;
+      cursor:pointer; box-shadow:0 8px 24px rgba(1,86,204,.45);
+      transition:transform .12s, opacity .12s, box-shadow .12s; pointer-events:auto;
     }
     .cta-btn:hover{ transform:translateY(-2px); box-shadow:0 10px 30px rgba(1,86,204,.55); }
     .cta-btn:active{ transform:translateY(0); opacity:.95; }
-
-    /* Mobile : un peu plus compact */
-    @media (max-width: 768px){
-      .cta-btn{
-        bottom:12px; right:12px;
-        padding:14px 22px;
-        font-size:16px;
-        border-radius:12px;
-      }
+    @media (max-width:768px){
+      .cta-btn{ bottom:12px; right:12px; padding:14px 22px; font-size:16px; border-radius:12px; }
     }
 
     .note{ opacity:.7; margin-top:12px; font-size:.9rem; text-align:center; }
 
-    /* === Modal Calendly === */
-    .overlay{
-      position: fixed; inset:0;
-      background: rgba(0,0,0,.6);
-      display:grid; place-items:center;
-      z-index:9999;
-      transition:opacity .18s ease, visibility .18s ease;
-    }
+    /* Popup Calendly préchargée */
+    .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:grid; place-items:center; z-index:9999;
+      transition:opacity .18s, visibility .18s; }
     .overlay.hidden{ opacity:0; visibility:hidden; pointer-events:none; }
-    .modal{
-      width:min(980px,96vw); height:min(760px,88vh);
-      background:#101012; border:1px solid rgba(255,255,255,.08);
-      border-radius:16px; box-shadow:0 10px 40px rgba(0,0,0,.45);
-      overflow:hidden; transform:translateY(6px);
-      transition:transform .18s ease, opacity .18s ease; opacity:1;
-    }
+    .modal{ width:min(980px,96vw); height:min(760px,88vh); background:#101012; border:1px solid rgba(255,255,255,.08);
+      border-radius:16px; box-shadow:0 10px 40px rgba(0,0,0,.45); overflow:hidden; transform:translateY(6px);
+      transition:transform .18s, opacity .18s; opacity:1; }
     .overlay.hidden .modal{ transform:translateY(12px); opacity:0; }
-    .modal-head{
-      display:flex; align-items:center; justify-content:space-between;
-      padding:10px 14px; background:#0c0c0f; border-bottom:1px solid rgba(255,255,255,.06);
-    }
+    .modal-head{ display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#0c0c0f; border-bottom:1px solid rgba(255,255,255,.06); }
     .modal-title{ margin:0; font-size:.95rem; opacity:.9; }
-    .close-btn{
-      border:0; background:#1a1a1f; color:#fff; border-radius:8px;
-      padding:6px 10px; cursor:pointer; opacity:.9;
-    }
-    .calendly-host{ width:100%; height: calc(100% - 46px); }
+    .close-btn{ border:0; background:#1a1a1f; color:#fff; border-radius:8px; padding:6px 10px; cursor:pointer; opacity:.9; }
+    .calendly-host{ width:100%; height:calc(100% - 46px); }
     .calendly-inline-widget{ width:100%; height:100%; }
   </style>
 
-  <!-- Script Calendly -->
+  <!-- Script Calendly (chargé d’emblée) -->
   <script src="https://assets.calendly.com/assets/external/widget.js" async></script>
 </head>
 <body>
   <div class="wrap">
     <div class="player">
-      <!-- CTA -->
       <button id="ctaBtn" class="cta-btn" aria-label="Prendre rendez-vous">Prendre RDV</button>
-
-      <!-- Cloudflare Stream -->
       <iframe id="stream-player"
         src="https://customer-g50chvgfq5q94nqo.cloudflarestream.com/5032da31754eb596edf1e9d68cbe031e/iframe?autoplay=true&muted=true"
-        allow="autoplay; encrypted-media; picture-in-picture"
-        allowfullscreen="true"></iframe>
+        allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen="true"></iframe>
     </div>
-
     <p class="note" id="debug"></p>
   </div>
 
-  <!-- Modal Calendly -->
+  <!-- Popup Calendly -->
   <div id="calOverlay" class="overlay hidden" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="calTitle">
       <div class="modal-head">
@@ -127,8 +74,7 @@
       </div>
       <div class="calendly-host">
         <div class="calendly-inline-widget"
-             data-url="https://calendly.com/aqisio/presentation?hide_event_type_details=1&hide_gdpr_banner=1">
-        </div>
+             data-url="https://calendly.com/aqisio/presentation?hide_event_type_details=1&hide_gdpr_banner=1"></div>
       </div>
     </div>
   </div>
@@ -137,97 +83,82 @@
   <script src="https://embed.cloudflarestream.com/embed/sdk.latest.js"></script>
 
   <script>
-    /***********************************
-     * CONFIG & VARIABLES
-     ***********************************/
+    /*** CONFIG ***/
     const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz9alEU_7igvcCej_rumzU7mtVQFYiCbUmczzNXpXVzU-1Uz37hHUhAe90z_I4Vstus/exec";
     const VIDEO_ID    = "5032da31754eb596edf1e9d68cbe031e";
-    const qs          = new URLSearchParams(location.search);
-    const prospectId  = qs.get("p") || "unknown";
+    const qs = new URLSearchParams(location.search);
+    const prospectId = qs.get("p") || "unknown";
+    const ua = navigator.userAgent;
 
-    let sessionId = crypto.randomUUID();
-    let lastPing = 0;
-    let duration = 0;
-    let percent = 0;
-    let hasEnded = false;
+    /*** SESSION ***/
+    let sessionId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now()+"-"+Math.random());
+    let ended = false;
+    let lastSecSent = -1;
 
-    /***********************************
-     * INITIALISATION DU PLAYER
-     ***********************************/
+    /*** PLAYER ***/
     const player = Stream(document.getElementById("stream-player"));
     player.play().catch(async () => { try { player.muted = true; await player.play(); } catch(_) {} });
 
-    player.addEventListener("durationchange", e => { duration = player.duration; });
-
-    /***********************************
-     * FONCTION D’ENVOI (ping → AppScript)
-     ***********************************/
+    /*** PING ***/
     async function sendPing(final=false){
-      if (!duration) return;
       try {
-        const body = {
-          prospectId,
-          videoId: VIDEO_ID,
-          secondsWatched: Math.floor(player.currentTime),
-          duration: Math.floor(duration),
-          percent: Math.round((player.currentTime / duration) * 100),
-          sessionId,
-          userAgent: navigator.userAgent,
-          final
-        };
+        const cur = Math.floor(await player.currentTime);
+        const dur = Math.floor(await player.duration);
+        const pct = dur > 0 ? Math.min(100, Math.round((cur/dur)*100)) : 0;
+
+        // IMPORTANT: pas de Content-Type pour éviter le preflight CORS
         await fetch(WEBHOOK_URL, {
           method: "POST",
-          body: JSON.stringify(body),
-          headers: { "Content-Type": "application/json" }
+          body: JSON.stringify({
+            prospectId,
+            videoId: VIDEO_ID,
+            secondsWatched: cur,
+            duration: dur,
+            percent: pct,
+            sessionId,
+            userAgent: ua,
+            final
+          })
         });
-      } catch(err) {
-        console.warn("Ping error:", err);
+
+        setNote(`Session ${sessionId} — ${cur}s / ${dur}s (${pct}%) ${final ? '[final]' : ''}`);
+      } catch(e) {
+        console.warn('ping failed', e);
       }
     }
 
-    /***********************************
-     * TRACKING LOOP (1s)
-     ***********************************/
-    setInterval(() => {
-      if (hasEnded) return;
-      const t = Math.floor(player.currentTime);
-      if (t !== lastPing) {
-        lastPing = t;
-        sendPing(false);
-      }
+    // boucle 1s, avec await sur les API du player
+    setInterval(async () => {
+      if (ended) return;
+      try {
+        const t = Math.floor(await player.currentTime);
+        if (t !== lastSecSent) {
+          lastSecSent = t;
+          sendPing(false);
+        }
+      } catch(_) {}
     }, 1000);
 
     player.addEventListener("ended", async () => {
-      hasEnded = true;
+      if (ended) return;
+      ended = true;
       await sendPing(true);
-      openCalendly(); // affiche Calendly automatiquement à la fin
-      setNote("Merci d’avoir regardé ✨ — Calendly ouvert");
+      openCalendly();
     });
 
-    /***********************************
-     * POPUP CALENDLY
-     ***********************************/
+    /*** CALENDLY POPUP ***/
     const calOverlay = document.getElementById('calOverlay');
     const calClose   = document.getElementById('calClose');
     const ctaBtn     = document.getElementById('ctaBtn');
 
-    function openCalendly(){
-      calOverlay.classList.remove('hidden');
-      calOverlay.setAttribute('aria-hidden','false');
-    }
-    function closeCalendly(){
-      calOverlay.classList.add('hidden');
-      calOverlay.setAttribute('aria-hidden','true');
-    }
+    function openCalendly(){ calOverlay.classList.remove('hidden'); calOverlay.setAttribute('aria-hidden','false'); }
+    function closeCalendly(){ calOverlay.classList.add('hidden'); calOverlay.setAttribute('aria-hidden','true'); }
     calClose.addEventListener('click', closeCalendly);
     ctaBtn.addEventListener('click', openCalendly);
     window.addEventListener('keydown', e => { if (e.key === 'Escape') closeCalendly(); });
 
-    /***********************************
-     * DEBUG / INFOS
-     ***********************************/
-    const debug = document.getElementById('debug');
-    function setNote(t){ if(debug) debug.textContent = t; }
+    /*** UI debug ***/
+    function setNote(t){ const el=document.getElementById('debug'); if (el) el.textContent=t; }
   </script>
 </body>
 </html>
