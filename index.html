@@ -32,11 +32,42 @@
       overflow:hidden;
       box-shadow:0 10px 40px rgba(0,0,0,.45);
       background:#000;
+      user-select:none;
     }
     .player iframe{
       width:100%; height:100%;
       border:0; border-radius:16px;
       position:relative; z-index:1; display:block;
+    }
+
+    /* Overlay Play */
+    .play-mask{
+      position:absolute; inset:0; z-index:2;
+      display:grid; place-items:center;
+      background:linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.55));
+      cursor:pointer;
+      transition:opacity .18s ease;
+    }
+    .play-mask.hidden{ opacity:0; pointer-events:none; }
+
+    .play-btn{
+      display:inline-grid; place-items:center;
+      width:116px; height:116px; border-radius:999px;
+      background:rgba(255,255,255,.07);
+      backdrop-filter: blur(4px);
+      border:1px solid rgba(255,255,255,.12);
+      box-shadow:0 10px 34px rgba(0,0,0,.45);
+      transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
+    }
+    .play-btn:hover{ transform:translateY(-2px); box-shadow:0 14px 40px rgba(0,0,0,.55); background:rgba(255,255,255,.10); }
+    .play-icon{
+      width:0; height:0; margin-left:4px;
+      border-top:18px solid transparent;
+      border-bottom:18px solid transparent;
+      border-left:28px solid #fff;
+    }
+    .hint{
+      margin-top:14px; font-size:.95rem; opacity:.9; text-align:center;
     }
 
     /* CTA sous la vidéo, à droite */
@@ -51,6 +82,8 @@
     .cta-btn:active{ transform:translateY(0); opacity:.95; }
     @media (max-width:768px){
       .cta-btn{ padding:14px 22px; font-size:16px; border-radius:12px; }
+      .play-btn{ width:92px; height:92px; }
+      .play-icon{ border-top-width:14px; border-bottom-width:14px; border-left-width:22px; }
     }
 
     /* Popup Calendly (sans bouton de fermeture) */
@@ -73,10 +106,18 @@
   <div class="wrap">
     <div class="stage">
       <div class="player">
-        <!-- Cloudflare Stream -->
+        <!-- Cloudflare Stream (src injecté au clic) -->
         <iframe id="stream-player"
           src=""
           allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen="true"></iframe>
+
+        <!-- Overlay Play -->
+        <div id="playMask" class="play-mask" role="button" aria-label="Lancer la vidéo">
+          <div class="play-btn" aria-hidden="true">
+            <div class="play-icon"></div>
+          </div>
+          <div class="hint">Cliquer pour lancer la vidéo avec le son</div>
+        </div>
       </div>
 
       <!-- CTA (sous la vidéo) -->
@@ -114,7 +155,6 @@
       if(!s) return "";
       try { s = decodeURIComponent(s); } catch(_) {}
       s = s.trim().replace(/_/g," ").replace(/\s+/g," ");
-      // coupe sur espaces/traits d'union mais conserve les séparateurs
       return s.split(/([\s-]+)/).map(chunk=>{
         return /[\s-]+/.test(chunk)
           ? chunk
@@ -133,9 +173,9 @@
     const DEFAULT_ID = "5032da31754eb596edf1e9d68cbe031e";
     const VIDEO_ID = /^[a-f0-9]{32}$/i.test(idRaw) ? idRaw : DEFAULT_ID;
 
-    // Définir player (captions auto ON)
+    // Élém. DOM
     const playerIframe = document.getElementById("stream-player");
-    playerIframe.src = `https://iframe.videodelivery.net/${encodeURIComponent(VIDEO_ID)}?autoplay=true&muted=true&defaultTextTrack=fr`;
+    const playMask     = document.getElementById("playMask");
 
     // CTA : « 📞 Prénom, Réservez un Rendez-Vous ! »
     const ctaBtn = document.getElementById('ctaBtn');
@@ -153,41 +193,19 @@
     window.addEventListener('keydown', e => { if (e.key === 'Escape') e.preventDefault(); });
     calOverlay.addEventListener('click', (e) => { e.stopPropagation(); });
 
-    // Tracking minimal (seconds watched)
+    /********************
+     * Tracking (déclenché APRES clic Play)
+     ********************/
     const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz9alEU_7igvcCej_rumzU7mtVQFYiCbUmczzNXpXVzU-1Uz37hHUhAe90z_I4Vstus/exec";
     const prospectId  = `${firstName}${lastName}-${VIDEO_ID}`;
-    const player = Stream(playerIframe);
-
-    let ended=false, duration=0, watchedMap=Object.create(null), lastSecSent=-1;
-    let sessionId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now()+"-"+Math.random());
-
-    (async () => {
-      try{ await player.play(); } catch{ try{ player.muted = true; await player.play(); } catch(_){} }
-      try{ duration = Math.floor(await player.duration); }catch(_){}
-      setInterval(async ()=>{
-        try{
-          const paused = await player.paused;
-          if (ended || paused) return;
-          const t = Math.floor(await player.currentTime);
-          if (!watchedMap[t]) {
-            watchedMap[t] = true;
-            if (t !== lastSecSent) {
-              lastSecSent = t;
-              sendSummary(false);
-            }
-          }
-        }catch(_){}
-      }, 1000);
-    })();
-
-    player.addEventListener("ended", () => { if(ended) return; ended=true; sendSummary(true); openCalendly(); });
+    let player = null, ended=false, duration=0, watchedMap=null, lastSecSent=-1;
+    const sessionId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now()+"-"+Math.random());
 
     function computeSummary(){
-      const secondsWatched = Object.keys(watchedMap).length;
+      const secondsWatched = watchedMap ? Object.keys(watchedMap).length : 0;
       const pct = duration>0 ? Math.min(100, Math.round((secondsWatched/duration)*100)) : 0;
       return { secondsWatched, pct };
     }
-
     async function sendSummary(final=false){
       const { secondsWatched, pct } = computeSummary();
       const payload = {
@@ -201,6 +219,51 @@
       };
       try { await fetch(WEBHOOK_URL, { method:"POST", body: JSON.stringify(payload) }); } catch(e){}
     }
-  </script>
-</body>
-</html>
+
+    /********************
+     * Démarrage au clic (avec son)
+     ********************/
+    let started = false;
+    async function startPlayback(){
+      if (started) return;
+      started = true;
+
+      // Injecte l'iframe SRC avec autoplay autorisé et son activé
+      playerIframe.src =
+        `https://iframe.videodelivery.net/${encodeURIComponent(VIDEO_ID)}?autoplay=true&muted=false&playsinline=true&defaultTextTrack=fr`;
+
+      // Quand l'iframe est chargée, on contrôle via le SDK
+      const onLoad = async () => {
+        playerIframe.removeEventListener('load', onLoad);
+
+        try {
+          player = Stream(playerIframe);
+        } catch (_) {
+          // Si le SDK n'est pas prêt, on retente très vite
+          setTimeout(onLoad, 50);
+          return;
+        }
+
+        // Masque l'overlay
+        playMask.classList.add('hidden');
+
+        // Démarre la lecture AVEC le son (le clic utilisateur sert d'interaction)
+        try { player.muted = false; await player.play(); } catch (e) { /* fallback: l'utilisateur peut recliquer */ }
+
+        // Initialise le tracking
+        ended = false;
+        watchedMap = Object.create(null);
+        lastSecSent = -1;
+
+        try { duration = Math.floor(await player.duration); } catch(_) { duration = 0; }
+
+        // Tick tracking
+        const tick = async () => {
+          if (!player || ended) return;
+          try{
+            const paused = await player.paused;
+            if (paused) return;
+            const t = Math.floor(await player.currentTime);
+            if (!watchedMap[t]) {
+              watchedMap[t] = true;
+              if (t !== lastSecSent) {
