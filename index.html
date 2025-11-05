@@ -132,7 +132,7 @@
     const DEFAULT_ID = "5032da31754eb596edf1e9d68cbe031e";
     const VIDEO_ID = /^[a-f0-9]{32}$/i.test(idRaw) ? idRaw : DEFAULT_ID;
 
-    // ✅ Player sans autoplay ni muted : le son sera actif au clic utilisateur
+    // ✅ Player (pas d'autoplay/muted) : lecture déclenchée par l'utilisateur
     const playerIframe = document.getElementById("stream-player");
     playerIframe.src =
       `https://iframe.videodelivery.net/${encodeURIComponent(VIDEO_ID)}?controls=true&playsinline=true&defaultTextTrack=fr`;
@@ -157,27 +157,123 @@
     ctaBtn.addEventListener('click', openCalendly);
 
     /********************
+     * Utils parsing UA / device
+     ********************/
+    function getClientMeta(){
+      const ua = navigator.userAgent || "";
+      let browser_name = "Unknown", browser_version = "", os_name = "Unknown", os_version = "", device_type = /Mobi/i.test(ua) ? "mobile" : "desktop";
+
+      // Navigateur
+      if (/Edg\/([\d.]+)/.test(ua)) { browser_name="Edge";   browser_version=RegExp.$1; }
+      else if (/OPR\/([\d.]+)/.test(ua)) { browser_name="Opera";  browser_version=RegExp.$1; }
+      else if (/Chrome\/([\d.]+)/.test(ua)) { browser_name="Chrome"; browser_version=RegExp.$1; }
+      else if (/Firefox\/([\d.]+)/.test(ua)) { browser_name="Firefox"; browser_version=RegExp.$1; }
+      else if (/Version\/([\d.]+).*Safari/.test(ua)) { browser_name="Safari"; browser_version=RegExp.$1; }
+      else if (/Safari\/([\d.]+)/.test(ua)) { browser_name="Safari"; browser_version=RegExp.$1; }
+
+      // OS
+      if (/Windows NT ([\d.]+)/.test(ua)) { os_name="Windows"; os_version=RegExp.$1; }
+      else if (/Mac OS X ([\d_]+)/.test(ua)) { os_name="macOS"; os_version=RegExp.$1.replace(/_/g,'.'); }
+      else if (/\biPhone OS ([\d_]+)/.test(ua)) { os_name="iOS"; os_version=RegExp.$1.replace(/_/g,'.'); device_type="mobile"; }
+      else if (/\biPad; CPU OS ([\d_]+)/.test(ua)) { os_name="iOS"; os_version=RegExp.$1.replace(/_/g,'.'); device_type="mobile"; }
+      else if (/Android ([\d.]+)/.test(ua)) { os_name="Android"; os_version=RegExp.$1; device_type="mobile"; }
+      else if (/Linux/.test(ua)) { os_name="Linux"; os_version=""; }
+
+      return {
+        user_agent: ua,
+        language: navigator.language || "",
+        timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone || ""),
+        screen_resolution: `${window.screen.width}x${window.screen.height}`,
+        device_type,
+        browser_name,
+        browser_version,
+        os_name,
+        os_version
+      };
+    }
+
+    /********************
      * Tracking lecture
      ********************/
     const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz9alEU_7igvcCej_rumzU7mtVQFYiCbUmczzNXpXVzU-1Uz37hHUhAe90z_I4Vstus/exec";
     const prospectId  = `${firstName}${lastName}-${VIDEO_ID}`;
+    const sessionId   = (crypto.randomUUID && crypto.randomUUID()) || (Date.now()+"-"+Math.random());
     let ended=false, duration=0, watchedMap=null, lastSecSent=-1;
-    const sessionId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now()+"-"+Math.random());
+    let hasSentPlay=false;
+    let replayCount=0;     // 0 = première lecture
+    let isReplay=false;
 
     function computeSummary(){
       const secondsWatched = watchedMap ? Object.keys(watchedMap).length : 0;
       const pct = duration>0 ? Math.min(100, Math.round((secondsWatched/duration)*100)) : 0;
       return { secondsWatched, pct };
     }
-    async function sendSummary(final=false){
+
+    function buildPayload(final=false){
+      const meta = getClientMeta();
       const { secondsWatched, pct } = computeSummary();
-      const payload = { prospectId, videoId: VIDEO_ID, secondsWatched, duration, percent: pct, sessionId, final };
-      try { await fetch(WEBHOOK_URL, { method:"POST", body: JSON.stringify(payload) }); } catch(e){}
+      return {
+        timestamp: new Date().toISOString(),
+        prospect_id: prospectId,
+        video_id: VIDEO_ID,
+        seconds_watched: secondsWatched,
+        duration: duration,
+        percent: pct,
+        session_id: sessionId,
+        user_agent: meta.user_agent,
+        final: !!final,
+        language: meta.language,
+        timezone: meta.timezone,
+        screen_resolution: meta.screen_resolution,
+        device_type: meta.device_type,
+        browser_name: meta.browser_name,
+        browser_version: meta.browser_version,
+        os_name: meta.os_name,
+        os_version: meta.os_version,
+        is_replay: !!isReplay,
+        replay_count: replayCount
+      };
+    }
+
+    async function postJSON(url, data, keepalive=false){
+      try{
+        // Essai sendBeacon si keepalive (fermeture d’onglet)
+        if (keepalive && navigator.sendBeacon) {
+          const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+          navigator.sendBeacon(url, blob);
+          return;
+        }
+      }catch(_){}
+      try{
+        await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+          keepalive: !!keepalive
+        });
+      }catch(_){}
+    }
+
+    async function sendSummary(final=false, keepalive=false){
+      const payload = buildPayload(final);
+      await postJSON(WEBHOOK_URL, payload, keepalive);
+    }
+
+    // Ping "play détecté" : prouve que l’utilisateur a cliqué Play.
+    async function sendPlayStarted(){
+      if (hasSentPlay) return;
+      hasSentPlay = true;
+      const payload = buildPayload(false);
+      // seconds_watched/percent peuvent être à 0, c’est normal pour marquer le démarrage
+      await postJSON(WEBHOOK_URL, payload);
     }
 
     function startTracking(){
-      ended=false; watchedMap=Object.create(null); lastSecSent=-1;
+      ended=false; isReplay = (replayCount > 0);
+      watchedMap=Object.create(null); lastSecSent=-1;
+
       (async ()=>{ try{ duration = Math.floor(await player.duration); }catch(_){ duration = 0; } })();
+
       const intervalId = setInterval(async ()=>{
         if (!player || ended) { clearInterval(intervalId); return; }
         try{
@@ -199,18 +295,34 @@
       }, { once:true });
     }
 
-    // Démarre le tracking à la première lecture réelle
+    // Démarre sur la première lecture réelle + gère les replays
     const waitPlayerReady = setInterval(async ()=>{
       if (!player) return;
       clearInterval(waitPlayerReady);
-      const poll = setInterval(async ()=>{
-        if (!player) return;
-        try{
-          const paused = await player.paused;
-          if (paused === false) { clearInterval(poll); startTracking(); }
-        }catch(_){}
-      }, 300);
+
+      // Écoute explicite du "play" (utile pour marquer played même si 0s)
+      player.addEventListener("play", async ()=>{
+        if (ended) {
+          // Nouvelle lecture après une fin → replay
+          replayCount += 1;
+          isReplay = true;
+          // On relance un nouveau cycle de tracking
+          startTracking();
+        } else {
+          // Première lecture de la session
+          await sendPlayStarted();
+          startTracking();
+        }
+      });
     }, 50);
+
+    // Sauvegarde finale si l’utilisateur ferme/rafraîchit
+    window.addEventListener("beforeunload", function(){
+      try{
+        // keepalive/beacon : meilleures chances d’atteindre Apps Script
+        sendSummary(true, /*keepalive*/ true);
+      }catch(_){}
+    });
   </script>
 </body>
 </html>
