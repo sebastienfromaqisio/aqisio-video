@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Une vidéo pour vous — Aqisio</title>
+  <title>Regardez la Vidéo — Aqisio</title>
 
   <!-- Optim Calendly -->
   <link rel="preconnect" href="https://assets.calendly.com" crossorigin>
@@ -15,12 +15,12 @@
     body{ margin:0; background:#0b0b0b; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
     .wrap{ display:grid; place-items:center; min-height:100dvh; padding:24px; gap:14px; }
 
-    /* Conteneur vidéo + bouton, permet d'avoir un espace entre eux */
+    /* Conteneur vidéo + bouton (espace entre eux) */
     .stage{
       width:min(960px,100%);
       display:flex;
       flex-direction:column;
-      align-items:flex-end;  /* aligne le bouton à droite sous la vidéo */
+      align-items:flex-end;  /* bouton à droite sous la vidéo */
       gap:14px;              /* espace entre le lecteur et le bouton */
     }
 
@@ -41,7 +41,7 @@
 
     /* CTA sous la vidéo, à droite */
     .cta-btn{
-      position:static;               /* plus d’absolu : le bouton n’est plus “collé” à la vidéo */
+      position:static;
       background:#0156CC; color:#fff; border:0; border-radius:16px;
       padding:20px 36px; font-weight:700; font-size:22px; line-height:1;
       cursor:pointer; box-shadow:0 8px 24px rgba(1,86,204,.45);
@@ -52,8 +52,6 @@
     @media (max-width:768px){
       .cta-btn{ padding:14px 22px; font-size:16px; border-radius:12px; }
     }
-
-    .note{ opacity:.7; margin-top:4px; font-size:.9rem; text-align:center; }
 
     /* Popup Calendly (sans bouton de fermeture) */
     .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:grid; place-items:center; z-index:9999;
@@ -81,14 +79,12 @@
           allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen="true"></iframe>
       </div>
 
-      <!-- CTA (désormais sous la vidéo, avec marge via .stage) -->
+      <!-- CTA (sous la vidéo) -->
       <button id="ctaBtn" class="cta-btn" aria-label="Prendre rendez-vous">📞 Réservez un Rendez-Vous !</button>
     </div>
-
-    <p class="note" id="debug"></p>
   </div>
 
-  <!-- Modal Calendly (plus de bouton “Fermer”) -->
+  <!-- Modal Calendly (impossible à fermer) -->
   <div id="calOverlay" class="overlay hidden" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="calTitle">
       <div class="modal-head">
@@ -113,7 +109,7 @@
     const lastRaw  = qs.get("l") || "";
     const idRaw    = qs.get("id") || "";
 
-    // Normalisation basique du prénom/nom (Majuscule initiale, reste minuscule)
+    // Normalisation basique du prénom/nom
     function niceCase(s){
       if(!s) return "";
       try { s = decodeURIComponent(s); } catch(_) {}
@@ -126,11 +122,10 @@
     const firstName = niceCase(firstRaw);
     const lastName  = niceCase(lastRaw);
 
-    // Titre d’onglet dynamique : "Prénom Nom — une vidéo pour vous"
-    const baseTitle = "une vidéo pour vous";
+    // Titre d’onglet : "Prénom Nom - Regardez la Vidéo"
     document.title = (firstName || lastName)
-      ? `${firstName} ${lastName} — ${baseTitle}`
-      : `Une vidéo pour vous — Aqisio`;
+      ? `${firstName} ${lastName} - Regardez la Vidéo`
+      : `Regardez la Vidéo — Aqisio`;
 
     // ID vidéo (32 hex attendu, sinon valeur par défaut)
     const DEFAULT_ID = "5032da31754eb596edf1e9d68cbe031e";
@@ -146,32 +141,23 @@
       ? `📞 ${firstName}, Réservez un Rendez-Vous !`
       : `📞 Réservez un Rendez-Vous !`;
 
-    // Calendly (ouverture uniquement, plus de fermeture possible)
+    // Calendly (ouverture uniquement, pas de fermeture)
     const calOverlay = document.getElementById('calOverlay');
     function openCalendly(){
       calOverlay.classList.remove('hidden');
       calOverlay.setAttribute('aria-hidden','false');
     }
     ctaBtn.addEventListener('click', openCalendly);
+    window.addEventListener('keydown', e => { if (e.key === 'Escape') e.preventDefault(); });
+    calOverlay.addEventListener('click', (e) => { e.stopPropagation(); });
 
-    // Empêche toute fermeture (pas d'Escape, pas de clic overlay)
-    window.addEventListener('keydown', e => {
-      if (e.key === 'Escape') { e.preventDefault(); }
-    });
-    calOverlay.addEventListener('click', (e) => {
-      // On bloque la propagation pour éviter une fermeture accidentelle
-      e.stopPropagation();
-    });
-
-    // Tracking minimal (seconds watched)
+    // Tracking minimal (seconds watched) — conservé
     const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz9alEU_7igvcCej_rumzU7mtVQFYiCbUmczzNXpXVzU-1Uz37hHUhAe90z_I4Vstus/exec";
     const prospectId  = `${firstName}${lastName}-${VIDEO_ID}`;
     const player = Stream(playerIframe);
 
     let ended=false, duration=0, watchedMap=Object.create(null), lastSecSent=-1;
     let sessionId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now()+"-"+Math.random());
-
-    function show(msg){ const el=document.getElementById('debug'); if(el) el.textContent=msg; }
 
     (async () => {
       try{ await player.play(); } catch{ try{ player.muted = true; await player.play(); } catch(_){} }
@@ -188,7 +174,6 @@
               sendSummary(false);
             }
           }
-          show(`${firstName||"Prospect"} — ${Object.keys(watchedMap).length}s / ${duration||0}s`);
         }catch(_){}
       }, 1000);
     })();
