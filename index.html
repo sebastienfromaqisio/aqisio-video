@@ -117,7 +117,7 @@
               .replace(/_/g, " ")
               .replace(/\s+/g, " ")
               .toLowerCase()
-              .replace(/(^|\s|-)\p{L}/gu, m => m.toUpperCase());
+              .replace(/(^|\\s|-)\\p{L}/gu, m => m.toUpperCase());
     }
     const firstName = niceCase(firstRaw);
     const lastName  = niceCase(lastRaw);
@@ -131,9 +131,9 @@
     const DEFAULT_ID = "5032da31754eb596edf1e9d68cbe031e";
     const VIDEO_ID = /^[a-f0-9]{32}$/i.test(idRaw) ? idRaw : DEFAULT_ID;
 
-    // Définir player
+    // Définir player (ajout de defaultTextTrack=fr)
     const playerIframe = document.getElementById("stream-player");
-    playerIframe.src = `https://iframe.videodelivery.net/${encodeURIComponent(VIDEO_ID)}?autoplay=true&muted=true`;
+    playerIframe.src = `https://iframe.videodelivery.net/${encodeURIComponent(VIDEO_ID)}?autoplay=true&muted=true&defaultTextTrack=fr`;
 
     // CTA : « 📞 Prénom, Réservez un Rendez-Vous ! »
     const ctaBtn = document.getElementById('ctaBtn');
