@@ -1,206 +1,160 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Regardez la Vidéo — Aqisio</title>
 
-  <!-- Optim Calendly -->
-  <link rel="preconnect" href="https://assets.calendly.com" crossorigin>
-  <link rel="preconnect" href="https://calendly.com" crossorigin>
-  <link rel="preload" as="script" href="https://assets.calendly.com/assets/external/widget.js">
+  <!-- Video.js (CDN) -->
+  <link href="https://unpkg.com/video.js@8/dist/video-js.css" rel="stylesheet">
+  <script defer src="https://unpkg.com/video.js@8/dist/video.min.js"></script>
+
+  <!-- hls.js chargé seulement si nécessaire -->
+  <script defer src="https://unpkg.com/hls.js@1.5.13/dist/hls.min.js"></script>
 
   <style>
     :root { color-scheme: dark; }
-    body{ margin:0; background:#0b0b0b; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-    .wrap{ display:grid; place-items:center; min-height:100dvh; padding:24px; gap:14px; }
+    body { margin:0; background:#0b0b0b; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    .wrap { min-height:100dvh; display:grid; place-items:center; padding:16px; }
 
-    /* Conteneur vidéo + bouton (espace entre eux) */
-    .stage{
-      width:min(960px,100%);
-      display:flex;
-      flex-direction:column;
-      align-items:flex-end;  /* bouton à droite sous la vidéo */
-      gap:14px;              /* espace entre le lecteur et le bouton */
-    }
+    /* Container pour placer les overlays */
+    .player-shell { position:relative; width:min(1200px, 100%); }
 
-    .player{
-      width:100%;
-      aspect-ratio:16/9;
-      position:relative;
-      border-radius:16px;
-      overflow:hidden;
-      box-shadow:0 10px 40px rgba(0,0,0,.45);
-      background:#000;
-    }
-    .player iframe{
-      width:100%; height:100%;
-      border:0; border-radius:16px;
-      position:relative; z-index:1; display:block;
+    /* Aspect Loom : bulle de sous-titres */
+    .caption-bubble {
+      position:absolute; left:50%; transform:translateX(-50%);
+      bottom:10%; /* ~au-dessus de la barre de contrôle */
+      max-width:min(90%, 1000px);
+      background:#1a73e8;  /* bleu Loom-like */
+      color:#fff; font-weight:600; line-height:1.35;
+      padding:14px 18px; border-radius:18px;
+      box-shadow:0 10px 30px rgba(0,0,0,.35);
+      pointer-events:none; /* pas cliquable */
+      opacity:0; transition:opacity .15s ease;
+      text-align:center; font-size:clamp(14px, 2.2vw, 22px);
     }
 
-    /* CTA sous la vidéo, à droite */
-    .cta-btn{
-      position:static;
-      background:#0156CC; color:#fff; border:0; border-radius:16px;
-      padding:20px 36px; font-weight:700; font-size:22px; line-height:1;
-      cursor:pointer; box-shadow:0 8px 24px rgba(1,86,204,.45);
-      transition:transform .12s, opacity .12s, box-shadow .12s; pointer-events:auto;
+    /* CTA en haut-droite (dans la vidéo) */
+    .cta {
+      position:absolute; top:14px; right:14px; z-index:3;
+      background:#1a73e8; color:#fff; font-weight:700;
+      padding:10px 16px; border-radius:999px;
+      box-shadow:0 8px 24px rgba(0,0,0,.35);
+      text-decoration:none;
     }
-    .cta-btn:hover{ transform:translateY(-2px); box-shadow:0 10px 30px rgba(1,86,204,.55); }
-    .cta-btn:active{ transform:translateY(0); opacity:.95; }
-    @media (max-width:768px){
-      .cta-btn{ padding:14px 22px; font-size:16px; border-radius:12px; }
-    }
+    .cta:hover { filter:brightness(1.08); }
 
-    /* Popup Calendly (sans bouton de fermeture) */
-    .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:grid; place-items:center; z-index:9999;
-      transition:opacity .18s, visibility .18s; }
-    .overlay.hidden{ opacity:0; visibility:hidden; pointer-events:none; }
-    .modal{ width:min(980px,96vw); height:min(760px,88vh); background:#101012; border:1px solid rgba(255,255,255,.08);
-      border-radius:16px; box-shadow:0 10px 40px rgba(0,0,0,.45); overflow:hidden; transform:translateY(6px);
-      transition:transform .18s, opacity .18s; opacity:1; }
-    .overlay.hidden .modal{ transform:translateY(12px); opacity:0; }
-    .modal-head{ display:flex; align-items:center; justify-content:center; padding:10px 14px; background:#0c0c0f; border-bottom:1px solid rgba(255,255,255,.06); }
-    .modal-title{ margin:0; font-size:.95rem; opacity:.9; }
-    .calendly-host{ width:100%; height:calc(100% - 46px); }
-    .calendly-inline-widget{ width:100%; height:100%; }
+    /* Vidéo responsive */
+    .video-js { width:100%; height:auto; aspect-ratio:16/9; background:#000; border-radius:12px; overflow:hidden; }
   </style>
-
-  <script src="https://assets.calendly.com/assets/external/widget.js" async></script>
 </head>
 <body>
   <div class="wrap">
-    <div class="stage">
-      <div class="player">
-        <!-- Cloudflare Stream -->
-        <iframe id="stream-player"
-          src=""
-          allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen="true"></iframe>
-      </div>
+    <div class="player-shell">
+      <!-- CTA overlay -->
+      <a class="cta" id="ctaLink" href="https://calendly.com/aqisio/30min" target="_blank" rel="noopener">
+        📞 Réservez un RDV !
+      </a>
 
-      <!-- CTA (sous la vidéo) -->
-      <button id="ctaBtn" class="cta-btn" aria-label="Prendre rendez-vous">📞 Réservez un Rendez-Vous !</button>
+      <!-- Player -->
+      <video
+        id="aqisioPlayer"
+        class="video-js vjs-default-skin"
+        controls
+        playsinline
+        preload="metadata"
+      >
+        <!-- CF Stream HLS manifest -->
+        <source src="https://videodelivery.net/VIDE0_ID/manifest/video.m3u8" type="application/x-mpegURL" />
+
+        <!-- On garde le VTT pour récupérer les cues, mais on ne l’affiche pas tel quel -->
+        <track id="vttTrack" kind="subtitles" srclang="fr" label="Français"
+               src="https://pub-xxx.r2.dev/sous-titres.vtt" default>
+      </video>
+
+      <!-- Bulle de sous-titres style Loom -->
+      <div id="captionBubble" class="caption-bubble" aria-live="polite"></div>
     </div>
   </div>
-
-  <!-- Modal Calendly (impossible à fermer) -->
-  <div id="calOverlay" class="overlay hidden" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="calTitle">
-      <div class="modal-head">
-        <h2 id="calTitle" class="modal-title">Réservez votre créneau avec Aqisio</h2>
-      </div>
-      <div class="calendly-host">
-        <div id="calendly" class="calendly-inline-widget"
-             data-url="https://calendly.com/aqisio/presentation?hide_event_type_details=1&hide_gdpr_banner=1"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- SDK Cloudflare Stream -->
-  <script src="https://embed.cloudflarestream.com/embed/sdk.latest.js"></script>
 
   <script>
-    /********************
-     * URL attendue : ?f=prenom&l=nom&id=videoId
-     ********************/
-    const qs = new URLSearchParams(location.search);
-    const firstRaw = qs.get("f") || "";
-    const lastRaw  = qs.get("l") || "";
-    const idRaw    = qs.get("id") || "";
+    // 1) Init Video.js
+    const player = videojs('aqisioPlayer', {
+      controls: true,
+      preload: 'metadata'
+    });
 
-    // Normalisation basique du prénom/nom (sans \p{L})
-    function niceCase(s){
-      if(!s) return "";
-      try { s = decodeURIComponent(s); } catch(_) {}
-      s = s.trim().replace(/_/g," ").replace(/\s+/g," ");
-      // coupe sur espaces/traits d'union mais conserve les séparateurs
-      return s.split(/([\s-]+)/).map(chunk=>{
-        return /[\s-]+/.test(chunk)
-          ? chunk
-          : (chunk.charAt(0).toUpperCase() + chunk.slice(1).toLowerCase());
-      }).join("");
-    }
-    const firstName = niceCase(firstRaw);
-    const lastName  = niceCase(lastRaw);
-
-    // Titre d’onglet : "Prénom Nom - Regardez la Vidéo"
-    document.title = (firstName || lastName)
-      ? `${firstName} ${lastName} - Regardez la Vidéo`
-      : `Regardez la Vidéo — Aqisio`;
-
-    // ID vidéo (32 hex attendu, sinon valeur par défaut)
-    const DEFAULT_ID = "5032da31754eb596edf1e9d68cbe031e";
-    const VIDEO_ID = /^[a-f0-9]{32}$/i.test(idRaw) ? idRaw : DEFAULT_ID;
-
-    // Définir player (captions auto ON)
-    const playerIframe = document.getElementById("stream-player");
-    playerIframe.src = `https://iframe.videodelivery.net/${encodeURIComponent(VIDEO_ID)}?autoplay=true&muted=true&defaultTextTrack=fr`;
-
-    // CTA : « 📞 Prénom, Réservez un Rendez-Vous ! »
-    const ctaBtn = document.getElementById('ctaBtn');
-    ctaBtn.textContent = firstName
-      ? `📞 ${firstName}, Réservez un Rendez-Vous !`
-      : `📞 Réservez un Rendez-Vous !`;
-
-    // Calendly (ouverture uniquement, pas de fermeture)
-    const calOverlay = document.getElementById('calOverlay');
-    function openCalendly(){
-      calOverlay.classList.remove('hidden');
-      calOverlay.setAttribute('aria-hidden','false');
-    }
-    ctaBtn.addEventListener('click', openCalendly);
-    window.addEventListener('keydown', e => { if (e.key === 'Escape') e.preventDefault(); });
-    calOverlay.addEventListener('click', (e) => { e.stopPropagation(); });
-
-    // Tracking minimal (seconds watched)
-    const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz9alEU_7igvcCej_rumzU7mtVQFYiCbUmczzNXpXVzU-1Uz37hHUhAe90z_I4Vstus/exec";
-    const prospectId  = `${firstName}${lastName}-${VIDEO_ID}`;
-    const player = Stream(playerIframe);
-
-    let ended=false, duration=0, watchedMap=Object.create(null), lastSecSent=-1;
-    let sessionId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now()+"-"+Math.random());
-
-    (async () => {
-      try{ await player.play(); } catch{ try{ player.muted = true; await player.play(); } catch(_){} }
-      try{ duration = Math.floor(await player.duration); }catch(_){}
-      setInterval(async ()=>{
-        try{
-          const paused = await player.paused;
-          if (ended || paused) return;
-          const t = Math.floor(await player.currentTime);
-          if (!watchedMap[t]) {
-            watchedMap[t] = true;
-            if (t !== lastSecSent) {
-              lastSecSent = t;
-              sendSummary(false);
-            }
-          }
-        }catch(_){}
-      }, 1000);
+    // 2) Fallback HLS.js si nécessaire (Safari/iOS lisent HLS nativement)
+    (function ensureHls() {
+      const src = player.currentSource()?.src;
+      const needsHls = !!src && src.endsWith('.m3u8') && !player.tech(true).featuresNativeHls;
+      if (needsHls && window.Hls?.isSupported?.()) {
+        const video = player.tech().el(); // <video> natif
+        const hls = new Hls();
+        hls.loadSource(src);
+        hls.attachMedia(video);
+      }
     })();
 
-    player.addEventListener("ended", () => { if(ended) return; ended=true; sendSummary(true); openCalendly(); });
+    // 3) “Renderer” overlay : on lit les cues du track en mode caché et on les affiche dans la bulle
+    const videoEl = player.tech().el();
+    const captionBubble = document.getElementById('captionBubble');
 
-    function computeSummary(){
-      const secondsWatched = Object.keys(watchedMap).length;
-      const pct = duration>0 ? Math.min(100, Math.round((secondsWatched/duration)*100)) : 0;
-      return { secondsWatched, pct };
+    // Récupérer le TextTrack (le mettre en hidden pour accéder aux cues sans affichage natif)
+    let textTrack;
+    videoEl.addEventListener('loadedmetadata', () => {
+      // Prendre le premier track de type 'subtitles'
+      for (const tt of videoEl.textTracks) {
+        if (tt.kind === 'subtitles') { textTrack = tt; break; }
+      }
+      if (textTrack) {
+        textTrack.mode = 'hidden';
+        textTrack.addEventListener('cuechange', renderCue);
+      }
+      renderCue(); // au cas où un cue est déjà actif
+    });
+
+    function renderCue() {
+      if (!textTrack) return;
+      const cue = textTrack.activeCues?.[0];
+      if (cue && cue.text) {
+        // Optionnel : convertir WebVTT avec tags en texte simple
+        const html = cue.text
+          .replace(/<\/?[^>]+(>|$)/g, '') // strip basique des balises
+          .replace(/\n/g, ' ');
+        captionBubble.textContent = html.trim();
+        captionBubble.style.opacity = '1';
+      } else {
+        captionBubble.style.opacity = '0';
+      }
     }
 
-    async function sendSummary(final=false){
-      const { secondsWatched, pct } = computeSummary();
-      const payload = {
-        prospectId,
-        videoId: VIDEO_ID,
-        secondsWatched,
-        duration,
-        percent: pct,
-        sessionId,
-        final
-      };
-      try { await fetch(WEBHOOK_URL, { method:"POST", body: JSON.stringify(payload) }); } catch(e){}
+    // 4) Tracking minimal (ex: paliers 25/50/75/100 % + événements clés)
+    const milestones = new Set([25,50,75,100]);
+    function send(eventName, payload={}) {
+      // TODO: remplace par ton webhook Apps Script
+      // fetch('https://script.google.com/macros/s/xxx/exec', {method:'POST', body:JSON.stringify({event:eventName, ...payload})});
+      console.log('[track]', eventName, payload);
     }
+    player.on('play',  () => send('play'));
+    player.on('pause', () => send('pause'));
+    player.on('ended', () => send('ended'));
+
+    player.on('timeupdate', () => {
+      const p = (player.currentTime() / player.duration()) * 100;
+      for (const m of [...milestones]) {
+        if (p >= m) {
+          send('progress', { milestone: m });
+          milestones.delete(m);
+        }
+      }
+    });
+
+    // 5) (Optionnel) Personnaliser le CTA avec ?f=Jean&l=Dupont
+    const params = new URLSearchParams(location.search);
+    const f = params.get('f') || '';
+    const cta = document.getElementById('ctaLink');
+    if (f) cta.textContent = `📞 ${f}, réservez un RDV !`;
   </script>
 </body>
 </html>
