@@ -5,15 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Regardez la Vidéo — Aqisio</title>
 
-  <!-- Preconnect lecteur -->
+  <!-- Preconnect Cloudflare Stream -->
   <link rel="preconnect" href="https://iframe.videodelivery.net" crossorigin>
   <link rel="preconnect" href="https://embed.cloudflarestream.com" crossorigin>
 
-  <!-- Calendly: préconnect + CSS + JS en statique (fiable) -->
+  <!-- Calendly CSS (pas de JS ici, on le charge dynamiquement dans le body) -->
   <link rel="preconnect" href="https://assets.calendly.com" crossorigin>
   <link rel="preconnect" href="https://calendly.com" crossorigin>
   <link rel="stylesheet" href="https://assets.calendly.com/assets/external/widget.css" />
-  <script src="https://assets.calendly.com/assets/external/widget.js" defer></script>
 
   <style>
     :root { color-scheme: dark; }
@@ -36,7 +35,7 @@
     .modal-head{ display:flex; align-items:center; justify-content:center; padding:10px 14px; background:#0c0c0f; border-bottom:1px solid rgba(255,255,255,.06); }
     .modal-title{ margin:0; font-size:.95rem; opacity:.9; }
     .calendly-host{ width:100%; height:calc(100% - 46px); }
-    .calendly-inline-widget{ width:100%; height:100%; min-height:640px; } /* hauteur explicite */
+    .calendly-inline-widget{ width:100%; height:100%; min-height:640px; }
   </style>
 
   <!-- Cloudflare Stream SDK -->
@@ -65,7 +64,7 @@
   </div>
 
   <script>
-    /* ====== Querystring ====== */
+    /* ========== Paramètres vidéo & prospect ========== */
     const qs = new URLSearchParams(location.search);
     const niceCase = s => s ? decodeURIComponent(s).trim().replace(/_/g," ").replace(/\s+/g," ")
       .split(/([\s-]+)/).map(ch => /[\s-]+/.test(ch)? ch : (ch[0]?.toUpperCase()+ch.slice(1).toLowerCase())).join("") : "";
@@ -79,57 +78,49 @@
     const VIDEO_ID = /^[a-f0-9]{32}$/i.test(idRaw) ? idRaw : DEFAULT_ID;
     const prospectId = `${firstName}${lastName}-${VIDEO_ID}`;
 
-    /* ====== Player ====== */
+    /* ========== Cloudflare Player ========== */
     const playerIframe = document.getElementById("stream-player");
     playerIframe.src = `https://iframe.videodelivery.net/${encodeURIComponent(VIDEO_ID)}?controls=true&playsinline=true&defaultTextTrack=fr`;
     let player = null;
     playerIframe.addEventListener('load', () => { try{ player = Stream(playerIframe); }catch(_){ } }, { once:true });
 
-    /* ====== Calendly (init après affichage) ====== */
+    /* ========== Calendly (init retardée fiable) ========== */
     const calOverlay = document.getElementById('calOverlay');
     const calHost = document.getElementById('calendly');
     const CAL_URL = "https://calendly.com/aqisio/presentation?hide_event_type_details=1&hide_gdpr_banner=1";
 
-    function openCalendly(){
+    function loadCalendlyJS(){
+      return new Promise(resolve=>{
+        if(window.Calendly) return resolve();
+        const s=document.createElement('script');
+        s.src="https://assets.calendly.com/assets/external/widget.js";
+        s.onload=resolve;
+        document.head.appendChild(s);
+      });
+    }
+
+    async function openCalendly(){
+      // 1) Affiche l’overlay
       calOverlay.classList.remove('hidden');
       calOverlay.setAttribute('aria-hidden','false');
-      // si pas déjà initialisé, on crée l'iframe maintenant
-      if (!calHost.querySelector('iframe') && window.Calendly?.initInlineWidget) {
-        window.Calendly.initInlineWidget({ url: CAL_URL, parentElement: calHost });
-      }
+      // 2) Charge le JS si besoin
+      await loadCalendlyJS();
+      // 3) Nettoie le conteneur (en cas de réouverture)
+      calHost.innerHTML="";
+      // 4) Attend deux frames pour que le conteneur soit mesuré
+      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+      // 5) Initialise Calendly
+      window.Calendly.initInlineWidget({
+        url: CAL_URL,
+        parentElement: calHost
+      });
     }
 
     const ctaBtn=document.getElementById('ctaBtn');
     ctaBtn.textContent = firstName ? `📞 ${firstName}, Réservez un Rendez-Vous !` : `📞 Réservez un Rendez-Vous !`;
     ctaBtn.addEventListener('click', openCalendly);
 
-    /* ====== Contexte ====== */
-    const landing_url = location.href;
-    const referrer = document.referrer || "";
-    const page_session_id = crypto.randomUUID ? crypto.randomUUID() : Date.now()+"-"+Math.random();
-
-    /* ====== Métadonnées device/browser ====== */
-    function getClientMeta(){
-      const ua = navigator.userAgent || "";
-      let browser_name="Unknown", browser_version="", os_name="Unknown", os_version="", device_type=/Mobi/i.test(ua)?"Mobile":"Desktop";
-      if(/Edg\/([\d.]+)/.test(ua)){browser_name="Edge";browser_version=RegExp.$1;}
-      else if(/OPR\/([\d.]+)/.test(ua)){browser_name="Opera";browser_version=RegExp.$1;}
-      else if(/Chrome\/([\d.]+)/.test(ua)){browser_name="Chrome";browser_version=RegExp.$1;}
-      else if(/Firefox\/([\d.]+)/.test(ua)){browser_name="Firefox";browser_version=RegExp.$1;}
-      else if(/Version\/([\d.]+).*Safari/.test(ua)){browser_name="Safari";browser_version=RegExp.$1;}
-      if(/Windows NT ([\d.]+)/.test(ua)){os_name="Windows";os_version=RegExp.$1;}
-      else if(/Mac OS X ([\d_]+)/.test(ua)){os_name="macOS";os_version=RegExp.$1.replace(/_/g,'.');}
-      else if(/\biPhone OS ([\d_]+)/.test(ua)){os_name="iOS";os_version=RegExp.$1.replace(/_/g,'.');device_type="Mobile";}
-      else if(/Android ([\d.]+)/.test(ua)){os_name="Android";os_version=RegExp.$1;device_type="Mobile";}
-      return {
-        language:navigator.language||"",
-        timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||"",
-        screen_resolution:`${screen.width}x${screen.height}`,
-        device_type,browser_name,browser_version,os_name,os_version
-      };
-    }
-
-    /* ====== Tracking ====== */
+    /* ========== Tracking ========== */
     const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzPt-Ig6VoKckcRxNSFXP6ediI0aJsHFmYHJ-z3-FaUhBwSIGvp3AgHvgVxqb8axb20hg/exec";
     const sessionId = crypto.randomUUID ? crypto.randomUUID() : Date.now()+"-"+Math.random();
     const watchedSeconds = new Set();
@@ -154,6 +145,14 @@
       return {secondsWatched,pDec};
     };
 
+    function getClientMeta(){
+      const ua=navigator.userAgent||"";
+      let browser="Unknown",os="Unknown",device=/Mobi/i.test(ua)?"Mobile":"Desktop";
+      if(/Chrome/.test(ua))browser="Chrome";else if(/Safari/.test(ua))browser="Safari";
+      if(/Mac OS/.test(ua))os="macOS";else if(/Win/.test(ua))os="Windows";else if(/Android/.test(ua))os="Android";else if(/iPhone|iPad/.test(ua))os="iOS";
+      return {browser,os,device,lang:navigator.language||"",tz:Intl.DateTimeFormat().resolvedOptions().timeZone||"",screen:`${screen.width}x${screen.height}`};
+    }
+
     function buildPayload(event_type){
       const meta=getClientMeta();
       const {secondsWatched,pDec}=computeSummary();
@@ -163,20 +162,14 @@
         secondsWatched,duration,percent:Number(pDec.toFixed(4)),
         event_type:event_type||(ended?"final":(hasStarted?"ping":"visit")),
         final:ended,
-        is_replay:false,replay_count:0,
         q25,q50,q75,q95_100,
-        max_continuous_streak,last_second,
-        abandon_at_percent:duration?Math.round((last_second/duration)*100):0,
-        seek_count,pause_count,play_count,buffer_count,
+        play_count,pause_count,seek_count,buffer_count,
         playback_rate,muted,volume,
         first_play_at,ended_at,
-        landing_url,referrer,page_session_id,
+        viewport,
         hidden_time_total,
         time_on_page:Math.floor((Date.now()-start_time)/1000),
-        language:meta.language,timezone:meta.timezone,
-        screen_resolution:meta.screen_resolution,
-        device_type:meta.device_type,browser_name:meta.browser_name,
-        browser_version:meta.browser_version,os_name:meta.os_name,os_version:meta.os_version
+        ...meta
       };
     }
 
@@ -189,16 +182,9 @@
     }
     const sendSummary=(e,keep=false)=>postJSON(WEBHOOK_URL,buildPayload(e),keep);
 
-    // 1) visite retardée 1s
     setTimeout(()=>sendSummary("visit"),1000);
+    let visitTicker=setInterval(()=>{if(!hasStarted&&!ended)sendSummary("visit_ping");else{clearInterval(visitTicker);visitTicker=null;}},10000);
 
-    // 2) heartbeat visite passive
-    let visitTicker=setInterval(()=>{
-      if(!hasStarted&&!ended)sendSummary("visit_ping");
-      else{clearInterval(visitTicker);visitTicker=null;}
-    },10000);
-
-    // Player events
     const readyTimer=setInterval(async()=>{
       if(!player)return;
       clearInterval(readyTimer);
@@ -207,13 +193,11 @@
       player.addEventListener('play',async()=>{
         play_count++;
         if(!hasStarted){hasStarted=true;first_play_at=new Date().toISOString();}
-        try{playback_rate=await player.playbackRate;muted=await player.muted;volume=await player.volume;}catch(_){ }
+        try{playback_rate=await player.playbackRate;muted=await player.muted;volume=await player.volume;}catch(_){}
         sendSummary("play");
       });
 
       player.addEventListener('pause',()=>{pause_count++;sendSummary("pause");});
-      player.addEventListener('ratechange',async()=>{try{playback_rate=await player.playbackRate;}catch(_){ }});
-      player.addEventListener('volumechange',async()=>{try{muted=await player.muted;volume=await player.volume;}catch(_){ }});
       player.addEventListener('seeked',()=>{seek_count++;current_streak=0;sendSummary("seek");});
       player.addEventListener('waiting',()=>{buffer_count++;});
 
@@ -241,13 +225,11 @@
       });
     },50);
 
-    // CTA click tracking
     ctaBtn.addEventListener('click',()=>{
       cta_clicks++; if(!cta_first_click_at) cta_first_click_at=new Date().toISOString();
       sendSummary("cta_click");
     });
 
-    // Flush sortie
     const flush=()=>{if(!hasStarted)postJSON(WEBHOOK_URL,buildPayload("no_play_final"),true);
       else postJSON(WEBHOOK_URL,buildPayload("final"),true);};
     window.addEventListener("beforeunload",flush);
