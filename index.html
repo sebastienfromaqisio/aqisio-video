@@ -156,8 +156,9 @@
       err.innerHTML = `<strong>Erreur :</strong> aucun paramètre <code>id</code> trouvé dans l’URL.`;
       document.querySelector('.shell').replaceWith(err);
     } else {
-      const CUSTOMER_CODE = 'd4fbad7f2421453e0a0e24dad51f322f';
-      const src = `https://customer-${CUSTOMER_CODE}.cloudflarestream.com/${encodeURIComponent(id)}/iframe?controls=true&playsinline=true&defaultTextTrack=fr`;
+      // ⚠️ Retour provisoire à videodelivery.net pour supprimer l'erreur 404
+      // (le domaine customer-<code> sera remis quand on aura confirmé le bon code exact)
+      const src = `https://iframe.videodelivery.net/${encodeURIComponent(id)}?controls=true&playsinline=true&defaultTextTrack=fr`;
 
       const iframe = document.createElement('iframe');
       iframe.id = 'stream-player';
@@ -167,9 +168,24 @@
       iframe.title = 'Lecteur vidéo Cloudflare Stream';
       root.replaceChildren(iframe);
 
-      if (typeof window.Stream === 'function') {
-        const player = Stream(iframe);
-        player.addEventListener('ended', () => { openCalendly('ended'); });
+      // Listener robuste via postMessage (diagnostic inclus)
+      window.addEventListener('message', (ev)=>{
+        try{
+          // LOG DIAGNOSTIC : enlève si bruit
+          console.debug('[CF message]', ev.origin, ev.data);
+
+          const host = ev.origin ? new URL(ev.origin).hostname : '';
+          if (host && !host.endsWith('videodelivery.net')) return;
+
+          let data = ev.data;
+          if (typeof data === 'string') { try { data = JSON.parse(data); } catch(_){} }
+
+          const evt = data && (data.event || (data.msg && data.msg.event));
+          if (evt === 'ended') {
+            openCalendly('ended');
+          }
+        }catch(_){ }
+      }););
         player.addEventListener('timeupdate', () => {
           try{
             const dur = player.duration || 0;
