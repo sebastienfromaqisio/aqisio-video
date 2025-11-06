@@ -56,11 +56,16 @@
       color: #fff;
       text-decoration: none;
       font-weight: 700;
-      padding: 16px 24px;      /* légèrement plus gros */
-      border-radius: 12px;      /* plus arrondi */
+      padding: 16px 24px;      /* base mobile */
+      border-radius: 12px;
       transition: background 0.2s ease, transform 0.05s ease;
       box-shadow: 0 6px 14px rgba(0,0,0,.35);
       will-change: transform;
+      font-size: 1rem;
+    }
+    /* +50% sur desktop */
+    @media (min-width: 1024px){
+      .cta{ font-size: 1.5rem; padding: 24px 36px; border-radius: 16px; }
     }
     .cta:hover { background: #0055cc; }
     .cta:active{ transform: translateY(1px); }
@@ -76,6 +81,17 @@
       line-height: 1.5;
     }
     code { color: #ffb4b4; }
+
+    /* Overlay Calendly (plein écran) */
+    .overlay{ position: fixed; inset: 0; display: none; background: rgba(0,0,0,.66); z-index: 1000; padding: min(4vw,24px); }
+    .overlay.open{ display: block; }
+    .overlay-inner{ width: clamp(320px, 92vw, 1280px); height: min(92vh, 760px); margin: 0 auto; background:#0b0b0b; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.5); border: 1px solid #1e1e1e; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+    .overlay-header{ display:none; align-items:center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #1f2530; background:#0e1116; }
+    .overlay.closable .overlay-header{ display:flex; }
+    .overlay-title{ font-weight:700; font-size: 15px; }
+    .overlay-close{ appearance:none; border:0; background:#1a1f2a; color:#fff; padding:8px 12px; border-radius:10px; cursor:pointer; }
+    .overlay-body{ position:relative; }
+    .overlay-body .calendly-inline-widget{ position:absolute; inset:0; min-width:320px; height:100%; }
   </style>
 </head>
 <body>
@@ -83,6 +99,17 @@
     <div id="root" class="frame"></div>
     <div class="cta-row">
       <a id="cta" href="#" class="cta" style="display:none;" aria-label="Réserver un rendez-vous">📞 Réservez un Rendez-Vous</a>
+    </div>
+  </div>
+
+  <!-- Overlay Calendly full-screen -->
+  <div id="cal-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="cal-title">
+    <div class="overlay-inner">
+      <div class="overlay-header">
+        <div id="cal-title" class="overlay-title">Planifier un rendez-vous</div>
+        <button id="cal-close" class="overlay-close" type="button">Fermer</button>
+      </div>
+      <div id="cal-body" class="overlay-body"><!-- Calendly injecté à l'ouverture --></div>
     </div>
   </div>
 
@@ -104,6 +131,37 @@
 
     const root = document.getElementById('root');
 
+    // Overlay + Calendly
+    const overlay   = document.getElementById('cal-overlay');
+    const closeBtn  = document.getElementById('cal-close');
+    const calBody   = document.getElementById('cal-body');
+    let calendlyLoaded = false;
+
+    function ensureCalendlyLoaded(){
+      if (calendlyLoaded) return;
+      // Injecte le widget inline de Calendly à la demande
+      calBody.innerHTML = `
+        <div class="calendly-inline-widget" data-url="https://calendly.com/aqisio/presentation?hide_event_type_details=1&hide_gdpr_banner=1" style="min-width:320px;height:100%;"></div>
+      `;
+      const s = document.createElement('script');
+      s.src = 'https://assets.calendly.com/assets/external/widget.js';
+      s.async = true;
+      document.body.appendChild(s);
+      calendlyLoaded = true;
+    }
+
+    function openCalendly(mode){
+      ensureCalendlyLoaded();
+      // mode: 'cta' -> closable ; 'ended' -> non closable
+      if (mode === 'cta') overlay.classList.add('closable');
+      else overlay.classList.remove('closable');
+      overlay.classList.add('open');
+    }
+    function closeCalendly(){ overlay.classList.remove('open'); }
+
+    closeBtn.addEventListener('click', closeCalendly);
+    ctaEl.addEventListener('click', (e)=>{ e.preventDefault(); openCalendly('cta'); });
+
     if (!id) {
       const err = document.createElement('div');
       err.className = 'error';
@@ -112,7 +170,6 @@
         Exemple d’URL correcte :<br>
         <code>?f=Cyril&l=GUERRY&id=0bf4f564089a51d49d457a4ce0b6fede&d=2025-01-01</code>
       `;
-      // Remplace le wrapper par l'erreur pour rester visible
       document.querySelector('.shell').replaceWith(err);
     } else {
       const iframe = document.createElement('iframe');
@@ -122,6 +179,16 @@
       iframe.allowFullscreen = true;
       iframe.title = 'Lecteur vidéo Cloudflare Stream';
       root.replaceChildren(iframe);
+
+      // Écoute de fin de vidéo via postMessage du player Cloudflare Stream
+      window.addEventListener('message', (ev)=>{
+        try{
+          // Le player envoie des events {event: 'ended' | 'play' | ...}
+          if (typeof ev.data === 'object' && ev.data && ev.data.event === 'ended') {
+            openCalendly('ended');
+          }
+        }catch(_){/* no-op */}
+      });
     }
   </script>
 </body>
