@@ -16,7 +16,7 @@
       margin: 0;
       background: #0b0b0b;
       color: #fff;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
     }
     .wrap {
       display: grid;
@@ -61,72 +61,32 @@
       box-shadow: 0 8px 24px rgba(1,86,204,.45);
       transition: transform .12s, opacity .12s, box-shadow .12s;
     }
-    .cta-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 30px rgba(1,86,204,.55);
-    }
-    .cta-btn:active {
-      transform: translateY(0);
-      opacity: .95;
-    }
+    .cta-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(1,86,204,.55); }
+    .cta-btn:active { transform: translateY(0); opacity: .95; }
     @media (max-width:768px) {
-      .cta-btn {
-        padding: 14px 22px;
-        font-size: 16px;
-        border-radius: 12px;
-      }
+      .cta-btn { padding: 14px 22px; font-size: 16px; border-radius: 12px; }
     }
     .overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,.6);
-      display: grid;
-      place-items: center;
-      z-index: 9999;
+      position: fixed; inset: 0; background: rgba(0,0,0,.6);
+      display: grid; place-items: center; z-index: 9999;
       transition: opacity .18s, visibility .18s;
     }
-    .overlay.hidden {
-      opacity: 0;
-      visibility: hidden;
-      pointer-events: none;
-    }
+    .overlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
     .modal {
-      width: min(980px,96vw);
-      height: min(760px,88vh);
-      background: #101012;
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 16px;
-      box-shadow: 0 10px 40px rgba(0,0,0,.45);
-      overflow: hidden;
-      transform: translateY(6px);
-      transition: transform .18s, opacity .18s;
-      opacity: 1;
+      width: min(980px,96vw); height: min(760px,88vh);
+      background: #101012; border: 1px solid rgba(255,255,255,.08);
+      border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.45);
+      overflow: hidden; transform: translateY(6px);
+      transition: transform .18s, opacity .18s; opacity: 1;
     }
-    .overlay.hidden .modal {
-      transform: translateY(12px);
-      opacity: 0;
-    }
+    .overlay.hidden .modal { transform: translateY(12px); opacity: 0; }
     .modal-head {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 10px 14px;
-      background: #0c0c0f;
-      border-bottom: 1px solid rgba(255,255,255,.06);
+      display: flex; align-items: center; justify-content: center;
+      padding: 10px 14px; background: #0c0c0f; border-bottom: 1px solid rgba(255,255,255,.06);
     }
-    .modal-title {
-      margin: 0;
-      font-size: .95rem;
-      opacity: .9;
-    }
-    .calendly-host {
-      width: 100%;
-      height: calc(100% - 46px);
-    }
-    .calendly-inline-widget {
-      width: 100%;
-      height: 100%;
-    }
+    .modal-title { margin: 0; font-size: .95rem; opacity: .9; }
+    .calendly-host { width: 100%; height: calc(100% - 46px); }
+    .calendly-inline-widget { width: 100%; height: 100%; }
   </style>
 
   <script src="https://assets.calendly.com/assets/external/widget.js" async></script>
@@ -159,7 +119,8 @@
     </div>
   </div>
 
-  <script src="https://embed.cloudflarestream.com/embed/sdk.latest.js"></script>
+  <!-- SDK officiel Cloudflare Stream -->
+  <script src="https://iframe.videodelivery.net/embed/sdk.latest.js"></script>
 
   <script>
     /* ====== Querystring & identité vidéo/prospect ====== */
@@ -174,16 +135,15 @@
     };
 
     const firstName = niceCase(qs.get("f") || "");
-    const lastName = niceCase(qs.get("l") || "");
-    const idRaw = qs.get("id") || "";
+    const lastName  = niceCase(qs.get("l") || "");
+    const idRaw     = qs.get("id") || "";
+    const DEFAULT_ID = "5032da31754eb596edf1e9d68cbe031e";
+    const VIDEO_ID = /^[a-f0-9]{32}$/i.test(idRaw) ? idRaw : DEFAULT_ID;
+    const prospectId = `${firstName}${lastName}-${VIDEO_ID}`;
 
     document.title = (firstName || lastName)
       ? `${firstName} ${lastName} - Regardez la Vidéo`
       : "Regardez la Vidéo — Aqisio";
-
-    const DEFAULT_ID = "5032da31754eb596edf1e9d68cbe031e";
-    const VIDEO_ID = /^[a-f0-9]{32}$/i.test(idRaw) ? idRaw : DEFAULT_ID;
-    const prospectId = `${firstName}${lastName}-${VIDEO_ID}`;
 
     /* ====== Player ====== */
     const playerIframe = document.getElementById("stream-player");
@@ -205,7 +165,12 @@
       calOverlay.classList.remove('hidden');
       calOverlay.setAttribute('aria-hidden', 'false');
     };
-    ctaBtn.addEventListener('click', openCalendly);
+    ctaBtn.addEventListener('click', () => {
+      cta_clicks++;
+      if (!cta_first_click_at) cta_first_click_at = new Date().toISOString();
+      openCalendly();
+      sendSummary("cta_click");
+    });
 
     /* ====== Contexte visite / UTM ====== */
     const landing_url = location.href;
@@ -245,6 +210,7 @@
 
     /* ====== Engagement avancé ====== */
     const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzPt-Ig6VoKckcRxNSFXP6ediI0aJsHFmYHJ-z3-FaUhBwSIGvp3AgHvgVxqb8axb20hg/exec";
+
     const sessionId = crypto.randomUUID();
     const watchedSeconds = new Set();
     let hasStarted = false, ended = false, duration = 0;
@@ -255,10 +221,18 @@
     const cta_destination = "https://calendly.com/aqisio/presentation";
 
     const start_time = Date.now();
+    let hidden_started = null;
+    let hidden_time_total_ms = 0;
+
+    // progress flags & streaks
+    let q25=false, q50=false, q75=false, q95_100=false;
+    let lastSecond = -1, currentStreak = 0, maxStreak = 0;
+
+    const viewport = `${window.innerWidth}x${window.innerHeight}`;
 
     function computeSummary() {
       const secondsWatched = watchedSeconds.size;
-      const pct = duration > 0 ? Math.min(100, Math.round((secondsWatched / duration) * 100)) : 0;
+      const pct = duration > 0 ? Math.min(100, Math.round((secondsWatched / duration) * 100)) : 0; // 0..100
       return { secondsWatched, pct };
     }
 
@@ -267,7 +241,7 @@
       const { secondsWatched, pct } = computeSummary();
       return {
         prospectId, videoId: VIDEO_ID, sessionId,
-        secondsWatched, duration, percent: pct,
+        secondsWatched, duration, percent: pct,        // (AppScript convertit en 0..1)
         event_type: event_type || (ended ? "final" : (hasStarted ? "ping" : "visit")),
         final: ended, is_replay: false,
         play_count, pause_count, seek_count, buffer_count,
@@ -275,6 +249,16 @@
         first_play_at, ended_at,
         cta_clicks, cta_first_click_at, cta_destination,
         landing_url, referrer, page_session_id, ...utm,
+
+        q25, q50, q75, q95_100,
+        max_continuous_streak: maxStreak,
+        last_second: lastSecond,
+        abandon_at_percent: (duration>0 ? Math.round((lastSecond / duration)*100) : 0),
+
+        time_on_page: Math.round((Date.now() - start_time)/1000),
+        hidden_time_total: Math.round(hidden_time_total_ms/1000),
+
+        viewport,
         userAgent: meta.userAgent,
         language: meta.language,
         timezone: meta.timezone,
@@ -305,17 +289,41 @@
     // Premier ping "visit"
     sendSummary("visit");
 
-    /* ====== Player Events ====== */
-    const readyTimer = setInterval(async () => {
+    /* ====== Player Ready & Events ====== */
+    const readyTimer = setInterval(() => {
       if (!player) return;
       clearInterval(readyTimer);
 
-      try {
-        const d = await player.duration;
-        if (Number.isFinite(d)) duration = Math.floor(d);
-      } catch (_) {}
+      const setDurationIfPossible = () => {
+        const d = Number(player.duration);
+        if (Number.isFinite(d) && d > 0) duration = Math.floor(d);
+      };
 
-      player.addEventListener('play', async () => {
+      player.addEventListener('loadedmetadata', setDurationIfPossible);
+
+      player.addEventListener('timeupdate', () => {
+        setDurationIfPossible();
+        const t = Math.floor(Number(player.currentTime) || 0);
+        if (t < 0) return;
+
+        let start = Math.max(lastSecond + 1, 0);
+        for (let s = start; s <= t; s++) {
+          if (!watchedSeconds.has(s)) {
+            watchedSeconds.add(s);
+            if (s === lastSecond + 1) currentStreak += 1; else currentStreak = 1;
+            if (currentStreak > maxStreak) maxStreak = currentStreak;
+            lastSecond = s;
+          }
+        }
+
+        const frac = (duration > 0) ? (watchedSeconds.size / duration) : 0;
+        if (!q25 && frac >= 0.25) q25 = true;
+        if (!q50 && frac >= 0.50) q50 = true;
+        if (!q75 && frac >= 0.75) q75 = true;
+        if (!q95_100 && frac >= 0.95) q95_100 = true;
+      });
+
+      player.addEventListener('play', () => {
         play_count++;
         if (!hasStarted) {
           hasStarted = true;
@@ -336,9 +344,37 @@
         sendSummary("final");
         openCalendly();
       });
+
+      player.addEventListener('seeking', () => { seek_count++; sendSummary("seek"); });
+      player.addEventListener('waiting', () => { buffer_count++; });
+      player.addEventListener('ratechange', () => { playback_rate = Number(player.playbackRate) || 1; });
+      player.addEventListener('volumechange', () => {
+        muted  = !!player.muted;
+        volume = Number(player.volume);
+      });
     }, 50);
 
+    /* ====== Pings périodiques + visibilité onglet ====== */
+    setInterval(() => { sendSummary("ping"); }, 10000);
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        hidden_started = Date.now();
+      } else {
+        if (hidden_started) {
+          hidden_time_total_ms += (Date.now() - hidden_started);
+          hidden_started = null;
+        }
+      }
+      sendSummary('visibility');
+    });
+
+    /* ====== Final ====== */
     window.addEventListener("beforeunload", () => {
+      if (hidden_started) {
+        hidden_time_total_ms += (Date.now() - hidden_started);
+        hidden_started = null;
+      }
       postJSON(WEBHOOK_URL, buildPayload(ended ? "final" : "no_play_final"), true);
     });
   </script>
