@@ -4,24 +4,42 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Vidéo</title>
+
   <style>
-    /* --- Layout respirant --- */
     :root {
-      --gap: clamp(12px, 3vw, 32px); /* marge autour de la vidéo + espace CTA */
+      /* marge autour + position CTA */
+      --gap: clamp(12px, 3vw, 32px);
     }
+
     html, body { margin:0; height:100%; background:#000; overflow:hidden; }
+
+    /* zone centrale avec padding = garde respirante */
     .stage {
-      position:fixed; inset: var(--gap);
-      display:flex; align-items:center; justify-content:center;
-      border-radius: 14px; overflow: hidden; /* angle doux optionnel */
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      padding: var(--gap);
+      box-sizing: border-box;
+      background: #000;
+    }
+
+    /* cadre de la vidéo : largeur limitée + 16/9 + limite en hauteur */
+    .frame {
+      width: clamp(320px, 88vw, 1100px);   /* ↓ réduit la taille sur desktop */
+      aspect-ratio: 16 / 9;
+      max-height: 68vh;                    /* ↓ laisse de l’air verticalement */
+      border-radius: 14px;
+      overflow: hidden;
       box-shadow: 0 10px 40px rgba(0,0,0,.35);
       background: #000;
     }
-    #player {
-      width: 100%; height: 100%;
-      border:0; object-fit: cover;
-      background:#000;
+
+    /* mobile : encore un peu plus compact */
+    @media (max-width: 640px) {
+      .frame { width: 96vw; max-height: 58vh; }
     }
+
+    /* l’iframe remplit la boîte 16/9 */
+    #player { width: 100%; height: 100%; border: 0; object-fit: cover; background:#000; }
 
     /* --- CTA --- */
     .cta {
@@ -37,19 +55,13 @@
       cursor:pointer; user-select:none; -webkit-tap-highlight-color: transparent;
     }
     .cta:active { transform: translateY(1px); }
-
-    /* Desktop : ~x2 */
     @media (min-width: 1024px) {
       .cta { padding: 22px 26px; font-size: 18px; border-radius:20px; }
     }
 
     /* --- Modal Calendly --- */
     .modal { position:fixed; inset:0; z-index:50; display:none; background:rgba(0,0,0,.65); backdrop-filter:blur(2px); }
-    .modal__panel {
-      position:absolute; inset: var(--gap);
-      background:#fff; border-radius:16px; overflow:hidden;
-      display:flex; flex-direction:column; box-shadow: 0 20px 60px rgba(0,0,0,.45);
-    }
+    .modal__panel { position:absolute; inset: var(--gap); background:#fff; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; box-shadow: 0 20px 60px rgba(0,0,0,.45); }
     .modal__head { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#0b1220; color:#fff; font:600 14px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
     .modal__close { appearance:none; border:0; background:transparent; color:#fff; cursor:pointer; font-size:18px; padding:6px; line-height:1; }
     .modal__body { flex:1; min-height:420px; background:#fff; }
@@ -62,9 +74,11 @@
   <script src="https://assets.calendly.com/assets/external/widget.js" async></script>
 </head>
 <body>
-  <!-- Vidéo (grand format avec marge) -->
+  <!-- Vidéo dans un cadre 16/9 limité -->
   <div class="stage">
-    <iframe id="player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="eager"></iframe>
+    <div class="frame">
+      <iframe id="player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="eager"></iframe>
+    </div>
   </div>
 
   <!-- CTA -->
@@ -88,7 +102,7 @@
     (function () {
       "use strict";
 
-      // === Params & titre/CTA personnalisés ===
+      // === Params & perso ===
       const qp = new URLSearchParams(location.search);
       const f  = (qp.get("f")  || "").trim();
       const l  = (qp.get("l")  || "").trim();
@@ -101,15 +115,14 @@
       const cta = document.getElementById("cta");
       cta.textContent = `📞 ${prettyF}, Réservez un Rendez-Vous !`;
 
-      // === Session & Player (API) ===
+      // === Session & Player ===
       const sessionId = (self.crypto && crypto.randomUUID)
         ? `sid_${id.slice(0,8)}_${crypto.randomUUID().slice(0,8)}`
         : `sid_${id.slice(0,8)}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,6)}`;
-
       const iframe = document.getElementById("player");
       iframe.src = `https://iframe.cloudflarestream.com/${id}?v=3`;
 
-      // === Tracking helper (Apps Script) ===
+      // === Tracking helper ===
       const WEB_APP = "https://script.google.com/macros/s/AKfycbyFxJ2lUMtuB44kud-xGFcMGudW2J5G2UWMD2QtjvolJiUpRtA4zeX9e4_KieRIlzaF-g/exec";
       function ping(ev, extra) {
         const base = { ev, f, l, id, d, sessionId, ua:navigator.userAgent, ref:document.referrer||"", w:String(innerWidth||0), h:String(innerHeight||0), ts:String(Date.now()) };
@@ -117,8 +130,7 @@
         try {
           if (navigator.sendBeacon) {
             const blob = new Blob([payload.toString()], { type:"application/x-www-form-urlencoded" });
-            navigator.sendBeacon(WEB_APP, blob);
-            return;
+            navigator.sendBeacon(WEB_APP, blob); return;
           }
         } catch(_) {}
         fetch(WEB_APP + "?" + payload.toString(), { method:"GET", mode:"no-cors", keepalive:true }).catch(()=>{});
@@ -132,7 +144,7 @@
         ping("opened", { first: first ? "1" : "0", cur:"0", dur:"0" });
       })();
 
-      // === Calendly modal (réouvrable) ===
+      // === Modal Calendly (réouvrable) ===
       const modal = document.getElementById("cal-modal");
       const closeBtn = document.getElementById("cal-close");
       function showCalendly(){ modal.style.display="block"; modal.setAttribute("aria-hidden","false"); ping("calendly_open"); }
@@ -142,7 +154,7 @@
       modal.addEventListener("click", (e)=>{ if(e.target === modal) hideCalendly(); });
       addEventListener("keydown", (e)=>{ if(e.key==="Escape") hideCalendly(); });
 
-      // === Player + tracking à la seconde (idem version précédente) ===
+      // === Player + tracking 1s ===
       function onReady(cb){ (document.readyState === "complete" ? cb : addEventListener("load", cb)); }
       onReady(function(){
         if (typeof Stream !== "function") { console.error("SDK Stream indisponible"); return; }
@@ -151,7 +163,6 @@
         let duration = 0, launched = false;
         const sentSeconds = new Set();
         let tick = null;
-
         const getTimes = () => {
           const ct = Math.max(0, Math.floor(Number(player.currentTime || 0)));
           const du = Math.max(0, Math.floor(Number(player.duration   || duration || 0)));
@@ -178,5 +189,3 @@
   </script>
 </body>
 </html>
-
-
