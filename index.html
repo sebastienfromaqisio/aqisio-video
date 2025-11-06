@@ -5,192 +5,70 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Regardez la Vidéo — Aqisio</title>
 
-  <!--
-    ❑ OBJECTIF
-    - Page la plus simple possible.
-    - Affiche une vidéo Cloudflare Stream via <iframe>.
-    - Récupère l'UID de la vidéo depuis le paramètre d'URL ?id=...
-
-    ❑ CONTRATS D’ENTRÉE (querystring)
-    - f : prénom (facultatif, ex. "Cyril")
-    - l : nom    (facultatif, ex. "GUERRY")
-    - id : UID Cloudflare Stream (OBLIGATOIRE, ex. "0bf4f564089a51d49d457a4ce0b6fede")
-    - d  : date texte libre (facultatif, ex. "2025-01-01")
-
-    ❑ RÈGLE D’AFFICHAGE
-    - Si id est présent → on construit l’iframe: https://iframe.videodelivery.net/{id}?controls=true&playsinline=true&defaultTextTrack=fr
-    - Sinon → on affiche un message d’erreur très explicite.
-
-    ❑ CHOIX TECHNIQUES MINIMALISTES
-    - Aucune dépendance externe (pas de framework, pas de script tiers inutile).
-    - Styles en ligne ultra simples.
-    - Beaucoup de texte explicatif dans le DOM pour relecture/diagnostic.
-  -->
-
   <style>
     :root { color-scheme: dark; }
     body {
       margin: 0;
       background: #0b0b0b;
-      color: #eaeaea;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      line-height: 1.45;
-    }
-    .wrap {
+      color: #fff;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       display: grid;
       place-items: center;
       min-height: 100dvh;
-      padding: 20px;
     }
-    .stage {
-      width: min(960px, 100%);
-      display: grid;
-      gap: 16px;
-    }
-    .panel {
-      border: 1px solid #222;
-      background: #111;
-      padding: 14px;
-      border-radius: 10px;
-    }
-    .label { color:#9aa0a6; font-size: 13px; }
-    .value { color:#eaeaea; font-weight:600 }
-    .player {
+    iframe {
       width: 100%;
-      aspect-ratio: 16/9;          /* garde le ratio vidéo sans CSS complexe */
-      border: 0;
+      max-width: 960px;
+      aspect-ratio: 16 / 9;
+      border: none;
       border-radius: 12px;
       background: #000;
     }
     .error {
-      border: 1px solid #5c1a1a;
+      color: #ffbaba;
       background: #2b1111;
-      color: #ffd7d7;
-      padding: 14px;
+      padding: 16px;
       border-radius: 10px;
+      font-size: 15px;
+      line-height: 1.4;
     }
-    a, a:visited { color:#8ab4f8; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <main class="stage" id="app">
-      <!-- ─────────────────────────── -->
-      <!-- 1) EN-TÊTE INFORMATIF       -->
-      <!-- ─────────────────────────── -->
-      <header class="panel" id="header">
-        <div class="label">Page :</div>
-        <div class="value" id="page-title">Regardez la Vidéo — Aqisio</div>
-
-        <div class="label" style="margin-top:8px;">Prospect (composé depuis l’URL) :</div>
-        <div class="value" id="who">Prénom Nom (si fournis)</div>
-
-        <div class="label" style="margin-top:8px;">Date (si fournie) :</div>
-        <div class="value" id="when">—</div>
-
-        <p style="margin-top:12px;color:#9aa0a6;">
-          <strong>Rappel :</strong> cette LP attend un paramètre <code>id</code> (UID Cloudflare Stream).<br/>
-          Exemple : <code>?f=Cyril&l=GUERRY&id=0bf4f564089a51d49d457a4ce0b6fede&d=2025-01-01</code>
-        </p>
-      </header>
-
-      <!-- ─────────────────────────── -->
-      <!-- 2) ZONE LECTEUR VIDÉO       -->
-      <!-- ─────────────────────────── -->
-      <section id="video-area" class="panel">
-        <!-- Cette zone est remplie par JS :
-             - si id OK → insertion de l'<iframe> Cloudflare Stream
-             - si id manquant → message d'erreur lisible -->
-        <div id="video-slot"></div>
-        <noscript>
-          <div class="error">
-            JavaScript est requis pour afficher la vidéo Cloudflare Stream.<br/>
-            Veuillez activer JavaScript puis recharger la page.
-          </div>
-        </noscript>
-      </section>
-
-      <!-- ─────────────────────────── -->
-      <!-- 3) DIAGNOSTIC DES PARAMS    -->
-      <!-- ─────────────────────────── -->
-      <aside class="panel" id="debug">
-        <div class="label">Paramètres d’URL bruts (pour débogage) :</div>
-        <pre id="raw-qs" style="white-space:pre-wrap;margin:8px 0 0 0;"></pre>
-      </aside>
-    </main>
-  </div>
+  <main id="app">
+    <div id="video-slot"></div>
+    <noscript>
+      <div class="error">Activez JavaScript pour afficher la vidéo.</div>
+    </noscript>
+  </main>
 
   <script>
-    // ─────────────────────────────────────────────────────────────────────
-    // UTILITAIRE : lecture propre des paramètres d’URL
-    // ─────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────
+    // Récupération des paramètres d'URL
+    // ────────────────────────────────
     const qs = new URLSearchParams(window.location.search);
-    const f  = (qs.get('f')  || '').trim();    // prénom (facultatif)
-    const l  = (qs.get('l')  || '').trim();    // nom    (facultatif)
-    const id = (qs.get('id') || '').trim();    // UID Cloudflare Stream (OBLIGATOIRE)
-    const d  = (qs.get('d')  || '').trim();    // date   (facultatif)
+    const id = (qs.get('id') || '').trim();
 
-    // Zones DOM
-    const pageTitleEl = document.getElementById('page-title');
-    const whoEl       = document.getElementById('who');
-    const whenEl      = document.getElementById('when');
-    const videoSlot   = document.getElementById('video-slot');
-    const rawQsEl     = document.getElementById('raw-qs');
+    const videoSlot = document.getElementById('video-slot');
 
-    // Affichage du debug des QS
-    rawQsEl.textContent = window.location.search || '(aucun paramètre)';
-
-    // Construction du "nom complet" si dispo
-    const fullName = [f, l].filter(Boolean).join(' ').trim();
-
-    // Titre de l’onglet et en-tête lisible
-    if (fullName) {
-      document.title = `${fullName} — Regardez la Vidéo`;
-      pageTitleEl.textContent = `${fullName} — Regardez la Vidéo`;
-      whoEl.textContent = fullName;
-    } else {
-      document.title = 'Regardez la Vidéo — Aqisio';
-      pageTitleEl.textContent = 'Regardez la Vidéo — Aqisio';
-      whoEl.textContent = 'Prénom Nom non fournis';
-    }
-
-    whenEl.textContent = d || '—';
-
-    // ─────────────────────────────────────────────────────────────────────
-    // RÈGLE D’AFFICHAGE VIDÉO
-    // - si id est vide → message d’erreur explicite (+ exemple d’URL)
-    // - sinon → on insère l’iframe Cloudflare Stream
-    // ─────────────────────────────────────────────────────────────────────
     if (!id) {
       const err = document.createElement('div');
       err.className = 'error';
       err.innerHTML = `
-        <strong>Erreur :</strong> aucun paramètre <code>id</code> n’a été trouvé dans l’URL.<br/>
-        Cette page nécessite l’UID Cloudflare Stream pour afficher la vidéo.<br/><br/>
-        <span class="label">Exemple d’URL correcte :</span><br/>
-        <code>https://video.aqisio.com/?f=Cyril&l=GUERRY&id=0bf4f564089a51d49d457a4ce0b6fede&d=2025-01-01</code>
+        <strong>Erreur :</strong> aucun paramètre <code>id</code> trouvé.<br><br>
+        Exemple :<br>
+        <code>?f=Cyril&l=GUERRY&id=0bf4f564089a51d49d457a4ce0b6fede&d=2025-01-01</code>
       `;
       videoSlot.replaceChildren(err);
     } else {
-      // Construction de l’URL d’iframe Cloudflare Stream.
-      // Paramètres choisis : controls visibles, lecture inline, piste FR si dispo.
-      const iframeSrc =
-        `https://iframe.videodelivery.net/${encodeURIComponent(id)}?controls=true&playsinline=true&defaultTextTrack=fr`;
-
+      const iframeSrc = `https://iframe.videodelivery.net/${encodeURIComponent(id)}?controls=true&playsinline=true&defaultTextTrack=fr`;
       const iframe = document.createElement('iframe');
-      iframe.id = 'stream-player';
-      iframe.className = 'player';
       iframe.src = iframeSrc;
       iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
       iframe.allowFullscreen = true;
-      iframe.setAttribute('title', 'Lecteur vidéo Cloudflare Stream');
-
+      iframe.title = 'Vidéo Aqisio';
       videoSlot.replaceChildren(iframe);
     }
-
-    // Remarque :
-    // - Ici aucun tracking n’est encore implémenté volontairement (étape 1 : afficher la vidéo).
-    // - Étapes suivantes (à intégrer plus tard) : pings, play/pause, pourcentages, CTA, etc.
   </script>
 </body>
 </html>
