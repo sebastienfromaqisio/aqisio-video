@@ -3,59 +3,64 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vidéo personnalisée</title>
-
+  <title>Vidéo</title>
   <style>
-    /* ---- RESET MINIMAL ---- */
-    html, body {
-      margin: 0;
-      height: 100%;
-      background: #000;        /* fond noir focus vidéo */
-      overflow: hidden;
-    }
-
-    /* ---- CONTAINER ---- */
-    .video-wrapper {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #000;
-    }
-
-    /* ---- IFRAME FULL WIDTH ---- */
-    iframe {
-      width: 100vw;
-      height: 100vh;
-      border: 0;
-      object-fit: cover;       /* vidéo remplit l’espace */
-    }
+    html, body { margin:0; height:100%; background:#000; overflow:hidden; }
+    .video-wrapper { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+    iframe { width:100vw; height:100vh; border:0; object-fit:cover; }
   </style>
 </head>
 
 <body data-account-base="https://customer-g50chvgfq5q94nqo.cloudflarestream.com">
   <div class="video-wrapper">
-    <iframe id="player"
-      allow="autoplay; fullscreen; picture-in-picture"
-      allowfullscreen
-      loading="eager"
-      title="Vidéo personnalisée"></iframe>
+    <iframe id="player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="eager"></iframe>
   </div>
 
   <script>
-    (function(){
-      const qp = new URLSearchParams(location.search);
-      const id = (qp.get("id") || "").trim();
-      const ACCOUNT_BASE = document.body.dataset.accountBase?.replace(/\/+$/,"");
-      const player = document.getElementById("player");
+    (function () {
+      "use strict";
 
-      if (/^[a-f0-9]{32}$/i.test(id) && ACCOUNT_BASE) {
-        player.src = `${ACCOUNT_BASE}/${id}/watch`;
-      } else {
-        // en cas d'erreur: fond noir vide (aucun texte)
-        console.error("Paramètre id invalide ou base manquante");
+      // --- paramètres d’URL (mapping) ---
+      const qp = new URLSearchParams(location.search);
+      const f  = (qp.get("f")  || "").trim();   // prénom
+      const l  = (qp.get("l")  || "").trim();   // nom
+      const id = (qp.get("id") || "").trim();   // id vidéo (hex32)
+      const d  = (qp.get("d")  || "").trim();   // date (optionnelle)
+
+      // --- vidéo ---
+      const BASE = document.body.dataset.accountBase?.replace(/\/+$/,"");
+      if (BASE && /^[a-f0-9]{32}$/i.test(id)) {
+        document.getElementById("player").src = `${BASE}/${id}/watch`;
       }
+
+      // --- tracking ouverture ---
+      const WEB_APP = "https://script.google.com/macros/s/AKfycbyFxJ2lUMtuB44kud-xGFcMGudW2J5G2UWMD2QtjvolJiUpRtA4zeX9e4_KieRIlzaF-g/exec";
+      const params = new URLSearchParams({
+        f, l, id, d,
+        ua: navigator.userAgent,
+        ref: document.referrer || "",
+        w: String(window.innerWidth || 0),
+        h: String(window.innerHeight || 0),
+        ts: String(Date.now()),
+        first: (function(){
+          const key = `aqi_opened_${id}_${d||"nodate"}`;
+          const first = !localStorage.getItem(key) ? 1 : 0;
+          try { localStorage.setItem(key,"1"); } catch(e){}
+          return String(first);
+        })()
+      });
+
+      // 1) POST non bloquant (sendBeacon)
+      try {
+        if (navigator.sendBeacon) {
+          const body = new Blob([params.toString()], { type: "application/x-www-form-urlencoded" });
+          navigator.sendBeacon(WEB_APP, body);
+          return;
+        }
+      } catch (_) {}
+
+      // 2) Fallback GET fire-and-forget (pas de CORS requis)
+      fetch(WEB_APP + "?" + params.toString(), { method: "GET", mode: "no-cors", keepalive: true }).catch(()=>{});
     })();
   </script>
 </body>
