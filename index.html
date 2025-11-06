@@ -6,112 +6,62 @@
   <title>Vidéo</title>
   <style>
     html, body { margin:0; height:100%; background:#000; overflow:hidden; }
-    .wrap { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+    .video-wrapper { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
     iframe { width:100vw; height:100vh; border:0; object-fit:cover; }
   </style>
 </head>
 
 <body data-account-base="https://customer-g50chvgfq5q94nqo.cloudflarestream.com">
-  <div class="wrap">
-    <!-- IMPORTANT: src en /iframe (pas /watch) + id "stream-player" -->
-    <iframe id="stream-player"
-      allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-      allowfullscreen
-      loading="eager"></iframe>
+  <div class="video-wrapper">
+    <iframe id="player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="eager"></iframe>
   </div>
 
-  <!-- SDK Cloudflare Stream -->
-  <script src="https://embed.cloudflarestream.com/embed/sdk.latest.js"></script>
-
   <script>
-  (function(){
-    "use strict";
+    (function () {
+      "use strict";
 
-    // ====== 1) PARAMS URL ======
-    const qp = new URLSearchParams(location.search);
-    const f  = (qp.get("f")  || "").trim();  // prénom
-    const l  = (qp.get("l")  || "").trim();  // nom
-    const id = (qp.get("id") || "").trim();  // uid vidéo (hex32)
-    const d  = (qp.get("d")  || "").trim();  // date (optionnel)
+      // --- paramètres d’URL (mapping) ---
+      const qp = new URLSearchParams(location.search);
+      const f  = (qp.get("f")  || "").trim();   // prénom
+      const l  = (qp.get("l")  || "").trim();   // nom
+      const id = (qp.get("id") || "").trim();   // id vidéo (hex32)
+      const d  = (qp.get("d")  || "").trim();   // date (optionnelle)
 
-    // ====== 2) IFRAME SRC (embed API compatible) ======
-    const BASE = document.body.dataset.accountBase?.replace(/\/+$/,"");
-    const okId = /^[a-f0-9]{32}$/i.test(id);
-    if (BASE && okId) {
-      document.getElementById("stream-player").src = `${BASE}/${id}/iframe`;
-    }
+      // --- vidéo ---
+      const BASE = document.body.dataset.accountBase?.replace(/\/+$/,"");
+      if (BASE && /^[a-f0-9]{32}$/i.test(id)) {
+        document.getElementById("player").src = `${BASE}/${id}/watch`;
+      }
 
-    // ====== 3) TRACKING SETUP ======
-    const WEB_APP = "https://script.google.com/macros/s/AKfycbyFxJ2lUMtuB44kud-xGFcMGudW2J5G2UWMD2QtjvolJiUpRtA4zeX9e4_KieRIlzaF-g/exec`;
-
-    // sessionId = run unique (pour agréger côté Sheet si tu veux)
-    const sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
-
-    // petit utilitaire d’envoi "fire-and-forget"
-    function ping(ev, extra) {
-      const p = new URLSearchParams(Object.assign({
+      // --- tracking ouverture ---
+      const WEB_APP = "https://script.google.com/macros/s/AKfycbyFxJ2lUMtuB44kud-xGFcMGudW2J5G2UWMD2QtjvolJiUpRtA4zeX9e4_KieRIlzaF-g/exec";
+      const params = new URLSearchParams({
         f, l, id, d,
-        ev,                           // nom d’événement: play/pause/q25/q50/q75/q100/ended
+        ua: navigator.userAgent,
+        ref: document.referrer || "",
+        w: String(window.innerWidth || 0),
+        h: String(window.innerHeight || 0),
         ts: String(Date.now()),
-        sessionId
-      }, extra || {}));
+        first: (function(){
+          const key = `aqi_opened_${id}_${d||"nodate"}`;
+          const first = !localStorage.getItem(key) ? 1 : 0;
+          try { localStorage.setItem(key,"1"); } catch(e){}
+          return String(first);
+        })()
+      });
 
-      // Priorité: sendBeacon POST; fallback GET no-cors
+      // 1) POST non bloquant (sendBeacon)
       try {
         if (navigator.sendBeacon) {
-          const body = new Blob([p.toString()], { type: "application/x-www-form-urlencoded" });
+          const body = new Blob([params.toString()], { type: "application/x-www-form-urlencoded" });
           navigator.sendBeacon(WEB_APP, body);
           return;
         }
-      } catch(_) {}
-      fetch(WEB_APP + "?" + p.toString(), { method:"GET", mode:"no-cors", keepalive:true }).catch(()=>{});
-    }
+      } catch (_) {}
 
-    // ====== 4) PLAYER API : écouter les événements ======
-    // On attend que l'iframe existe, puis on crée l'instance Player API
-    const iframe = document.getElementById('stream-player');
-    const player = Stream(iframe); // fourni par sdk.latest.js
-
-    // 4.a) Ouverture de page (déjà gérée précédemment, mais on peut garder)
-    // -> ping('open') si tu veux une ligne dédiée; sinon supprime
-    // ping('open');
-
-    // 4.b) Evénements simples
-    player.addEventListener('play',   () => ping('play'));
-    player.addEventListener('pause',  () => ping('pause'));
-    player.addEventListener('ended',  () => { markQuartile(100); ping('ended', summary()); });
-
-    // 4.c) Quartiles via timeupdate (ultra simple/robuste)
-    let duration = 0;
-    let sent = {25:false, 50:false, 75:false, 100:false};
-    function markQuartile(q) { if (!sent[q]) { sent[q] = true; ping('q'+q, summary()); } }
-
-    // "loadedmetadata" pour récupérer la durée
-    player.addEventListener('loadedmetadata', () => {
-      try { duration = Number(player.duration) || 0; } catch(_) {}
-    });
-
-    // "timeupdate" pour suivre la progression
-    player.addEventListener('timeupdate', () => {
-      try {
-        const t = Number(player.currentTime) || 0;
-        if (duration > 0) {
-          const pct = (t / duration) * 100;
-          if (pct >= 25) markQuartile(25);
-          if (pct >= 50) markQuartile(50);
-          if (pct >= 75) markQuartile(75);
-          // 100% sera marqué sur 'ended' par sécurité
-        }
-      } catch(_) {}
-    });
-
-    // petit récap à joindre aux pings importants
-    function summary(){
-      let cur = 0, dur = duration || 0, paused = false;
-      try { cur = Number(player.currentTime)||0; paused = !!player.paused; } catch(_) {}
-      return { cur: String(Math.round(cur)), dur: String(Math.round(dur)), paused: String(paused) };
-    }
-  })();
+      // 2) Fallback GET fire-and-forget (pas de CORS requis)
+      fetch(WEB_APP + "?" + params.toString(), { method: "GET", mode: "no-cors", keepalive: true }).catch(()=>{});
+    })();
   </script>
 </body>
 </html>
