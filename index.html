@@ -1,382 +1,196 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Regardez la Vidéo — Aqisio</title>
 
-  <!-- Optim Calendly -->
-  <link rel="preconnect" href="https://assets.calendly.com" crossorigin>
-  <link rel="preconnect" href="https://calendly.com" crossorigin>
-  <link rel="preload" as="script" href="https://assets.calendly.com/assets/external/widget.js">
+  <!--
+    ❑ OBJECTIF
+    - Page la plus simple possible.
+    - Affiche une vidéo Cloudflare Stream via <iframe>.
+    - Récupère l'UID de la vidéo depuis le paramètre d'URL ?id=...
+
+    ❑ CONTRATS D’ENTRÉE (querystring)
+    - f : prénom (facultatif, ex. "Cyril")
+    - l : nom    (facultatif, ex. "GUERRY")
+    - id : UID Cloudflare Stream (OBLIGATOIRE, ex. "0bf4f564089a51d49d457a4ce0b6fede")
+    - d  : date texte libre (facultatif, ex. "2025-01-01")
+
+    ❑ RÈGLE D’AFFICHAGE
+    - Si id est présent → on construit l’iframe: https://iframe.videodelivery.net/{id}?controls=true&playsinline=true&defaultTextTrack=fr
+    - Sinon → on affiche un message d’erreur très explicite.
+
+    ❑ CHOIX TECHNIQUES MINIMALISTES
+    - Aucune dépendance externe (pas de framework, pas de script tiers inutile).
+    - Styles en ligne ultra simples.
+    - Beaucoup de texte explicatif dans le DOM pour relecture/diagnostic.
+  -->
 
   <style>
     :root { color-scheme: dark; }
     body {
       margin: 0;
       background: #0b0b0b;
-      color: #fff;
-      font-family: system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      color: #eaeaea;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      line-height: 1.45;
     }
     .wrap {
       display: grid;
       place-items: center;
       min-height: 100dvh;
-      padding: 24px;
-      gap: 14px;
+      padding: 20px;
     }
     .stage {
       width: min(960px, 100%);
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 14px;
+      display: grid;
+      gap: 16px;
     }
+    .panel {
+      border: 1px solid #222;
+      background: #111;
+      padding: 14px;
+      border-radius: 10px;
+    }
+    .label { color:#9aa0a6; font-size: 13px; }
+    .value { color:#eaeaea; font-weight:600 }
     .player {
       width: 100%;
-      aspect-ratio: 16/9;
-      position: relative;
-      border-radius: 16px;
-      overflow: hidden;
-      box-shadow: 0 10px 40px rgba(0,0,0,.45);
+      aspect-ratio: 16/9;          /* garde le ratio vidéo sans CSS complexe */
+      border: 0;
+      border-radius: 12px;
       background: #000;
     }
-    .player iframe {
-      width: 100%;
-      height: 100%;
-      border: 0;
-      border-radius: 16px;
-      display: block;
+    .error {
+      border: 1px solid #5c1a1a;
+      background: #2b1111;
+      color: #ffd7d7;
+      padding: 14px;
+      border-radius: 10px;
     }
-    .cta-btn {
-      background: #0156CC;
-      color: #fff;
-      border: 0;
-      border-radius: 16px;
-      padding: 20px 36px;
-      font-weight: 700;
-      font-size: 22px;
-      line-height: 1;
-      cursor: pointer;
-      box-shadow: 0 8px 24px rgba(1,86,204,.45);
-      transition: transform .12s, opacity .12s, box-shadow .12s;
-    }
-    .cta-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(1,86,204,.55); }
-    .cta-btn:active { transform: translateY(0); opacity: .95; }
-    @media (max-width:768px) {
-      .cta-btn { padding: 14px 22px; font-size: 16px; border-radius: 12px; }
-    }
-    .overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,.6);
-      display: grid; place-items: center; z-index: 9999;
-      transition: opacity .18s, visibility .18s;
-    }
-    .overlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-    .modal {
-      width: min(980px,96vw); height: min(760px,88vh);
-      background: #101012; border: 1px solid rgba(255,255,255,.08);
-      border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.45);
-      overflow: hidden; transform: translateY(6px);
-      transition: transform .18s, opacity .18s; opacity: 1;
-    }
-    .overlay.hidden .modal { transform: translateY(12px); opacity: 0; }
-    .modal-head {
-      display: flex; align-items: center; justify-content: center;
-      padding: 10px 14px; background: #0c0c0f; border-bottom: 1px solid rgba(255,255,255,.06);
-    }
-    .modal-title { margin: 0; font-size: .95rem; opacity: .9; }
-    .calendly-host { width: 100%; height: calc(100% - 46px); }
-    .calendly-inline-widget { width: 100%; height: 100%; }
+    a, a:visited { color:#8ab4f8; }
   </style>
-
-  <script src="https://assets.calendly.com/assets/external/widget.js" async></script>
 </head>
 <body>
   <div class="wrap">
-    <div class="stage">
-      <div class="player">
-        <iframe
-          id="stream-player"
-          src=""
-          allow="autoplay; encrypted-media; picture-in-picture"
-          allowfullscreen="true">
-        </iframe>
-      </div>
-      <button id="ctaBtn" class="cta-btn" aria-label="Prendre rendez-vous">📞 Réservez un Rendez-Vous !</button>
-    </div>
-  </div>
+    <main class="stage" id="app">
+      <!-- ─────────────────────────── -->
+      <!-- 1) EN-TÊTE INFORMATIF       -->
+      <!-- ─────────────────────────── -->
+      <header class="panel" id="header">
+        <div class="label">Page :</div>
+        <div class="value" id="page-title">Regardez la Vidéo — Aqisio</div>
 
-  <div id="calOverlay" class="overlay hidden" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="calTitle">
-      <div class="modal-head">
-        <h2 id="calTitle" class="modal-title">Réservez votre créneau avec Aqisio</h2>
-      </div>
-      <div class="calendly-host">
-        <div id="calendly" class="calendly-inline-widget"
-             data-url="https://calendly.com/aqisio/presentation?hide_event_type_details=1&hide_gdpr_banner=1">
-        </div>
-      </div>
-    </div>
-  </div>
+        <div class="label" style="margin-top:8px;">Prospect (composé depuis l’URL) :</div>
+        <div class="value" id="who">Prénom Nom (si fournis)</div>
 
-  <!-- SDK officiel Cloudflare Stream -->
-  <script src="https://iframe.videodelivery.net/embed/sdk.latest.js"></script>
+        <div class="label" style="margin-top:8px;">Date (si fournie) :</div>
+        <div class="value" id="when">—</div>
+
+        <p style="margin-top:12px;color:#9aa0a6;">
+          <strong>Rappel :</strong> cette LP attend un paramètre <code>id</code> (UID Cloudflare Stream).<br/>
+          Exemple : <code>?f=Cyril&l=GUERRY&id=0bf4f564089a51d49d457a4ce0b6fede&d=2025-01-01</code>
+        </p>
+      </header>
+
+      <!-- ─────────────────────────── -->
+      <!-- 2) ZONE LECTEUR VIDÉO       -->
+      <!-- ─────────────────────────── -->
+      <section id="video-area" class="panel">
+        <!-- Cette zone est remplie par JS :
+             - si id OK → insertion de l'<iframe> Cloudflare Stream
+             - si id manquant → message d'erreur lisible -->
+        <div id="video-slot"></div>
+        <noscript>
+          <div class="error">
+            JavaScript est requis pour afficher la vidéo Cloudflare Stream.<br/>
+            Veuillez activer JavaScript puis recharger la page.
+          </div>
+        </noscript>
+      </section>
+
+      <!-- ─────────────────────────── -->
+      <!-- 3) DIAGNOSTIC DES PARAMS    -->
+      <!-- ─────────────────────────── -->
+      <aside class="panel" id="debug">
+        <div class="label">Paramètres d’URL bruts (pour débogage) :</div>
+        <pre id="raw-qs" style="white-space:pre-wrap;margin:8px 0 0 0;"></pre>
+      </aside>
+    </main>
+  </div>
 
   <script>
-    /* ====== Querystring & identité vidéo/prospect ====== */
-    const qs = new URLSearchParams(location.search);
-    const niceCase = s => {
-      if (!s) return "";
-      try { s = decodeURIComponent(s); } catch (_) {}
-      s = s.trim().replace(/_/g," ").replace(/\s+/g," ");
-      return s.split(/([\s-]+)/).map(ch =>
-        /[\s-]+/.test(ch) ? ch : (ch[0]?.toUpperCase() + ch.slice(1).toLowerCase())
-      ).join("");
-    };
+    // ─────────────────────────────────────────────────────────────────────
+    // UTILITAIRE : lecture propre des paramètres d’URL
+    // ─────────────────────────────────────────────────────────────────────
+    const qs = new URLSearchParams(window.location.search);
+    const f  = (qs.get('f')  || '').trim();    // prénom (facultatif)
+    const l  = (qs.get('l')  || '').trim();    // nom    (facultatif)
+    const id = (qs.get('id') || '').trim();    // UID Cloudflare Stream (OBLIGATOIRE)
+    const d  = (qs.get('d')  || '').trim();    // date   (facultatif)
 
-    const firstName = niceCase(qs.get("f") || "");
-    const lastName  = niceCase(qs.get("l") || "");
-    const idRaw     = qs.get("id") || "";
-    const DEFAULT_ID = "5032da31754eb596edf1e9d68cbe031e";
-    const VIDEO_ID = /^[a-f0-9]{32}$/i.test(idRaw) ? idRaw : DEFAULT_ID;
-    const prospectId = `${firstName}${lastName}-${VIDEO_ID}`;
+    // Zones DOM
+    const pageTitleEl = document.getElementById('page-title');
+    const whoEl       = document.getElementById('who');
+    const whenEl      = document.getElementById('when');
+    const videoSlot   = document.getElementById('video-slot');
+    const rawQsEl     = document.getElementById('raw-qs');
 
-    document.title = (firstName || lastName)
-      ? `${firstName} ${lastName} - Regardez la Vidéo`
-      : "Regardez la Vidéo — Aqisio";
+    // Affichage du debug des QS
+    rawQsEl.textContent = window.location.search || '(aucun paramètre)';
 
-    /* ====== Player ====== */
-    const playerIframe = document.getElementById("stream-player");
-    playerIframe.src = `https://iframe.videodelivery.net/${encodeURIComponent(VIDEO_ID)}?controls=true&playsinline=true&defaultTextTrack=fr`;
+    // Construction du "nom complet" si dispo
+    const fullName = [f, l].filter(Boolean).join(' ').trim();
 
-    let player = null;
-    playerIframe.addEventListener('load', () => {
-      try { player = Stream(playerIframe); } catch (_) {}
-    }, { once: true });
-
-    /* ====== CTA / Calendly ====== */
-    const ctaBtn = document.getElementById('ctaBtn');
-    ctaBtn.textContent = firstName
-      ? `📞 ${firstName}, Réservez un Rendez-Vous !`
-      : "📞 Réservez un Rendez-Vous !";
-
-    const calOverlay = document.getElementById('calOverlay');
-    const openCalendly = () => {
-      calOverlay.classList.remove('hidden');
-      calOverlay.setAttribute('aria-hidden', 'false');
-    };
-    ctaBtn.addEventListener('click', () => {
-      cta_clicks++;
-      if (!cta_first_click_at) cta_first_click_at = new Date().toISOString();
-      openCalendly();
-      sendSummary("cta_click");
-    });
-
-    /* ====== Contexte visite / UTM ====== */
-    const landing_url = location.href;
-    const referrer = document.referrer || "";
-    const utm = {};
-    for (const [k, v] of qs.entries()) {
-      if (/^utm_(source|medium|campaign|content|term)$/i.test(k) || /^(gclid|fbclid)$/i.test(k))
-        utm[k.toLowerCase()] = v;
-    }
-    const page_session_id = crypto.randomUUID();
-
-    /* ====== Meta device / browser ====== */
-    function getClientMeta() {
-      const ua = navigator.userAgent || "";
-      let browser_name = "Unknown", browser_version = "", os_name = "Unknown", os_version = "";
-      let device_type = /Mobi/i.test(ua) ? "mobile" : "desktop";
-
-      if (/Edg\/([\d.]+)/.test(ua)) { browser_name = "Edge"; browser_version = RegExp.$1; }
-      else if (/OPR\/([\d.]+)/.test(ua)) { browser_name = "Opera"; browser_version = RegExp.$1; }
-      else if (/Chrome\/([\d.]+)/.test(ua)) { browser_name = "Chrome"; browser_version = RegExp.$1; }
-      else if (/Firefox\/([\d.]+)/.test(ua)) { browser_name = "Firefox"; browser_version = RegExp.$1; }
-      else if (/Version\/([\d.]+).*Safari/.test(ua)) { browser_name = "Safari"; browser_version = RegExp.$1; }
-
-      if (/Windows NT ([\d.]+)/.test(ua)) { os_name = "Windows"; os_version = RegExp.$1; }
-      else if (/Mac OS X ([\d_]+)/.test(ua)) { os_name = "macOS"; os_version = RegExp.$1.replace(/_/g,'.'); }
-      else if (/\biPhone OS ([\d_]+)/.test(ua)) { os_name = "iOS"; os_version = RegExp.$1.replace(/_/g,'.'); device_type = "mobile"; }
-      else if (/Android ([\d.]+)/.test(ua)) { os_name = "Android"; os_version = RegExp.$1; device_type = "mobile"; }
-
-      return {
-        userAgent: ua,
-        language: navigator.language || "",
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
-        screen_resolution: `${screen.width}x${screen.height}`,
-        device_type, browser_name, browser_version, os_name, os_version
-      };
+    // Titre de l’onglet et en-tête lisible
+    if (fullName) {
+      document.title = `${fullName} — Regardez la Vidéo`;
+      pageTitleEl.textContent = `${fullName} — Regardez la Vidéo`;
+      whoEl.textContent = fullName;
+    } else {
+      document.title = 'Regardez la Vidéo — Aqisio';
+      pageTitleEl.textContent = 'Regardez la Vidéo — Aqisio';
+      whoEl.textContent = 'Prénom Nom non fournis';
     }
 
-    /* ====== Engagement avancé ====== */
-    const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzPt-Ig6VoKckcRxNSFXP6ediI0aJsHFmYHJ-z3-FaUhBwSIGvp3AgHvgVxqb8axb20hg/exec";
+    whenEl.textContent = d || '—';
 
-    const sessionId = crypto.randomUUID();
-    const watchedSeconds = new Set();
-    let hasStarted = false, ended = false, duration = 0;
-    let play_count = 0, pause_count = 0, seek_count = 0, buffer_count = 0;
-    let muted = false, volume = 1, playback_rate = 1;
-    let first_play_at = null, ended_at = null;
-    let cta_clicks = 0, cta_first_click_at = null;
-    const cta_destination = "https://calendly.com/aqisio/presentation";
+    // ─────────────────────────────────────────────────────────────────────
+    // RÈGLE D’AFFICHAGE VIDÉO
+    // - si id est vide → message d’erreur explicite (+ exemple d’URL)
+    // - sinon → on insère l’iframe Cloudflare Stream
+    // ─────────────────────────────────────────────────────────────────────
+    if (!id) {
+      const err = document.createElement('div');
+      err.className = 'error';
+      err.innerHTML = `
+        <strong>Erreur :</strong> aucun paramètre <code>id</code> n’a été trouvé dans l’URL.<br/>
+        Cette page nécessite l’UID Cloudflare Stream pour afficher la vidéo.<br/><br/>
+        <span class="label">Exemple d’URL correcte :</span><br/>
+        <code>https://video.aqisio.com/?f=Cyril&l=GUERRY&id=0bf4f564089a51d49d457a4ce0b6fede&d=2025-01-01</code>
+      `;
+      videoSlot.replaceChildren(err);
+    } else {
+      // Construction de l’URL d’iframe Cloudflare Stream.
+      // Paramètres choisis : controls visibles, lecture inline, piste FR si dispo.
+      const iframeSrc =
+        `https://iframe.videodelivery.net/${encodeURIComponent(id)}?controls=true&playsinline=true&defaultTextTrack=fr`;
 
-    const start_time = Date.now();
-    let hidden_started = null;
-    let hidden_time_total_ms = 0;
+      const iframe = document.createElement('iframe');
+      iframe.id = 'stream-player';
+      iframe.className = 'player';
+      iframe.src = iframeSrc;
+      iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
+      iframe.allowFullscreen = true;
+      iframe.setAttribute('title', 'Lecteur vidéo Cloudflare Stream');
 
-    // progress flags & streaks
-    let q25=false, q50=false, q75=false, q95_100=false;
-    let lastSecond = -1, currentStreak = 0, maxStreak = 0;
-
-    const viewport = `${window.innerWidth}x${window.innerHeight}`;
-
-    function computeSummary() {
-      const secondsWatched = watchedSeconds.size;
-      const pct = duration > 0 ? Math.min(100, Math.round((secondsWatched / duration) * 100)) : 0; // 0..100
-      return { secondsWatched, pct };
+      videoSlot.replaceChildren(iframe);
     }
 
-    function buildPayload(event_type) {
-      const meta = getClientMeta();
-      const { secondsWatched, pct } = computeSummary();
-      return {
-        prospectId, videoId: VIDEO_ID, sessionId,
-        secondsWatched, duration, percent: pct,        // (AppScript convertit en 0..1)
-        event_type: event_type || (ended ? "final" : (hasStarted ? "ping" : "visit")),
-        final: ended, is_replay: false,
-        play_count, pause_count, seek_count, buffer_count,
-        playback_rate, muted, volume,
-        first_play_at, ended_at,
-        cta_clicks, cta_first_click_at, cta_destination,
-        landing_url, referrer, page_session_id, ...utm,
-
-        q25, q50, q75, q95_100,
-        max_continuous_streak: maxStreak,
-        last_second: lastSecond,
-        abandon_at_percent: (duration>0 ? Math.round((lastSecond / duration)*100) : 0),
-
-        time_on_page: Math.round((Date.now() - start_time)/1000),
-        hidden_time_total: Math.round(hidden_time_total_ms/1000),
-
-        viewport,
-        userAgent: meta.userAgent,
-        language: meta.language,
-        timezone: meta.timezone,
-        screen_resolution: meta.screen_resolution,
-        device_type: meta.device_type,
-        browser_name: meta.browser_name,
-        browser_version: meta.browser_version,
-        os_name: meta.os_name,
-        os_version: meta.os_version
-      };
-    }
-
-    function postJSON(url, data, keepalive = false) {
-      const body = JSON.stringify(data);
-      if (keepalive && navigator.sendBeacon) {
-        try {
-          navigator.sendBeacon(url, new Blob([body], { type: "text/plain" }));
-          return;
-        } catch (_) {}
-      }
-      fetch(url, { method: "POST", body }).catch(() => {});
-    }
-
-    function sendSummary(event_type, keepalive = false) {
-      postJSON(WEBHOOK_URL, buildPayload(event_type), keepalive);
-    }
-
-    // Premier ping "visit"
-    sendSummary("visit");
-
-    /* ====== Player Ready & Events ====== */
-    const readyTimer = setInterval(() => {
-      if (!player) return;
-      clearInterval(readyTimer);
-
-      const setDurationIfPossible = () => {
-        const d = Number(player.duration);
-        if (Number.isFinite(d) && d > 0) duration = Math.floor(d);
-      };
-
-      player.addEventListener('loadedmetadata', setDurationIfPossible);
-
-      player.addEventListener('timeupdate', () => {
-        setDurationIfPossible();
-        const t = Math.floor(Number(player.currentTime) || 0);
-        if (t < 0) return;
-
-        let start = Math.max(lastSecond + 1, 0);
-        for (let s = start; s <= t; s++) {
-          if (!watchedSeconds.has(s)) {
-            watchedSeconds.add(s);
-            if (s === lastSecond + 1) currentStreak += 1; else currentStreak = 1;
-            if (currentStreak > maxStreak) maxStreak = currentStreak;
-            lastSecond = s;
-          }
-        }
-
-        const frac = (duration > 0) ? (watchedSeconds.size / duration) : 0;
-        if (!q25 && frac >= 0.25) q25 = true;
-        if (!q50 && frac >= 0.50) q50 = true;
-        if (!q75 && frac >= 0.75) q75 = true;
-        if (!q95_100 && frac >= 0.95) q95_100 = true;
-      });
-
-      player.addEventListener('play', () => {
-        play_count++;
-        if (!hasStarted) {
-          hasStarted = true;
-          first_play_at = new Date().toISOString();
-        }
-        sendSummary("play");
-      });
-
-      player.addEventListener('pause', () => {
-        pause_count++;
-        sendSummary("pause");
-      });
-
-      player.addEventListener('ended', () => {
-        if (ended) return;
-        ended = true;
-        ended_at = new Date().toISOString();
-        sendSummary("final");
-        openCalendly();
-      });
-
-      player.addEventListener('seeking', () => { seek_count++; sendSummary("seek"); });
-      player.addEventListener('waiting', () => { buffer_count++; });
-      player.addEventListener('ratechange', () => { playback_rate = Number(player.playbackRate) || 1; });
-      player.addEventListener('volumechange', () => {
-        muted  = !!player.muted;
-        volume = Number(player.volume);
-      });
-    }, 50);
-
-    /* ====== Pings périodiques + visibilité onglet ====== */
-    setInterval(() => { sendSummary("ping"); }, 10000);
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        hidden_started = Date.now();
-      } else {
-        if (hidden_started) {
-          hidden_time_total_ms += (Date.now() - hidden_started);
-          hidden_started = null;
-        }
-      }
-      sendSummary('visibility');
-    });
-
-    /* ====== Final ====== */
-    window.addEventListener("beforeunload", () => {
-      if (hidden_started) {
-        hidden_time_total_ms += (Date.now() - hidden_started);
-        hidden_started = null;
-      }
-      postJSON(WEBHOOK_URL, buildPayload(ended ? "final" : "no_play_final"), true);
-    });
+    // Remarque :
+    // - Ici aucun tracking n’est encore implémenté volontairement (étape 1 : afficher la vidéo).
+    // - Étapes suivantes (à intégrer plus tard) : pings, play/pause, pourcentages, CTA, etc.
   </script>
 </body>
 </html>
