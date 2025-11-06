@@ -6,88 +6,21 @@
   <title>Regardez la Vidéo — Aqisio</title>
   <style>
     :root { color-scheme: dark; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      background: #0b0b0b;
-      color: #fff;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      display: grid;
-      place-items: center;
-      min-height: 100dvh;
-      padding: 16px;
-    }
-
-    /* Conteneur principal de la page */
-    .shell{
-      width: clamp(320px, 92vw, 1280px);
-      display: grid;
-      gap: 16px;
-    }
-
-    /* Zone qui contient la vidéo */
-    .frame {
-      width: 100%;
-      position: relative;
-      padding-top: 56.25%;
-      background: #000;
-      border-radius: 12px;
-      overflow: hidden;
-    }
-    .frame iframe {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      border: 0;
-    }
-
-    /* Bouton CTA aligné en bas à droite */
-    .cta-row{
-      display: flex;
-      justify-content: flex-end;
-      position: sticky;
-      bottom: calc(16px + env(safe-area-inset-bottom));
-      z-index: 10;
-    }
-    .cta {
-      display: inline-block;
-      background: #006BFF;
-      color: #fff;
-      text-decoration: none;
-      font-weight: 700;
-      padding: 16px 24px;
-      border-radius: 12px;
-      transition: background 0.2s ease, transform 0.05s ease;
-      box-shadow: 0 6px 14px rgba(0,0,0,.35);
-      will-change: transform;
-      font-size: 1rem;
-    }
+    html, body { height: 100%; margin: 0; background: #0b0b0b; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; display: grid; place-items: center; min-height: 100dvh; padding: 16px; }
+    .shell { width: clamp(320px, 92vw, 1280px); display: grid; gap: 16px; }
+    .frame { width: 100%; position: relative; padding-top: 56.25%; background: #000; border-radius: 12px; overflow: hidden; }
+    .frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .cta-row { display: flex; justify-content: flex-end; position: sticky; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 10; }
+    .cta { display: inline-block; background: #006BFF; color: #fff; text-decoration: none; font-weight: 700; padding: 16px 24px; border-radius: 12px; transition: background 0.2s ease, transform 0.05s ease; box-shadow: 0 6px 14px rgba(0,0,0,.35); will-change: transform; font-size: 1rem; }
     @media (min-width: 1024px){ .cta{ font-size: 1.5rem; padding: 24px 36px; border-radius: 16px; } }
     .cta:hover { background: #0055cc; }
     .cta:active{ transform: translateY(1px); }
-
-    /* Message d’erreur si aucun ID vidéo */
-    .error {
-      max-width: 680px;
-      margin: 24px auto;
-      padding: 20px;
-      background: #2b1111;
-      color: #ffd7d7;
-      border-radius: 10px;
-      font-size: 15px;
-      line-height: 1.5;
-    }
-
-    /* Fenêtre Calendly plein écran */
-    .overlay{ position: fixed; inset: 0; display: none; background: rgba(0,0,0,.66); z-index: 1000; padding: min(4vw,24px); }
-    .overlay.open{ display: block; }
-    .overlay-inner{ width: clamp(320px, 92vw, 1280px); height: min(92vh, 760px); margin: 0 auto; background:#0b0b0b; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.5); border: 1px solid #1e1e1e; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
-    .overlay-header{ display:none; align-items:center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #1f2530; background:#0e1116; }
-    .overlay.closable .overlay-header{ display:flex; }
-    .overlay-close{ appearance:none; border:0; background:#1a1f2a; color:#fff; padding:8px 12px; border-radius:10px; cursor:pointer; }
-    .overlay-body{ position:relative; }
-    .overlay-body .calendly-inline-widget{ position:absolute; inset:0; min-width:320px; height:100%; }
+    .error { max-width: 680px; margin: 24px auto; padding: 20px; background: #2b1111; color: #ffd7d7; border-radius: 10px; font-size: 15px; line-height: 1.5; }
+    .overlay { position: fixed; inset: 0; display: none; background: rgba(0,0,0,.66); z-index: 1000; padding: 0; }
+    .overlay.open { display: block; }
+    .overlay-inner { width: 100%; height: 100vh; background: #fff; overflow: auto; }
+    .overlay-close { position: absolute; top: 12px; right: 12px; background: #006BFF; color: #fff; border: none; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+    .overlay-body .calendly-inline-widget { width: 100%; height: 100%; border: none; }
   </style>
 </head>
 <body>
@@ -100,31 +33,24 @@
 
   <div id="cal-overlay" class="overlay" role="dialog" aria-modal="true">
     <div class="overlay-inner">
-      <div class="overlay-header">
-        <button id="cal-close" class="overlay-close" type="button">Fermer</button>
-      </div>
+      <button id="cal-close" class="overlay-close">Fermer</button>
       <div id="cal-body" class="overlay-body"></div>
     </div>
   </div>
 
   <script src="https://embed.cloudflarestream.com/embed/sdk.latest.js"></script>
   <script>
-    // Lecture des paramètres URL (prénom, nom, id vidéo)
     const qs = new URLSearchParams(location.search);
     const f  = (qs.get('f')  || '').trim();
     const l  = (qs.get('l')  || '').trim();
     const id = (qs.get('id') || '').trim();
-
-    // Titre de la page
     const fullName = [f, l].filter(Boolean).join(' ');
     document.title = fullName ? `${fullName} - Regardez la Vidéo` : 'Regardez la Vidéo — Aqisio';
 
-    // Bouton CTA dynamique
     const ctaEl = document.getElementById('cta');
     if (f) ctaEl.textContent = `📞 ${f}, Réservez un Rendez-Vous`;
     ctaEl.style.display = 'inline-block';
 
-    // Élément vidéo + overlay Calendly
     const root = document.getElementById('root');
     const overlay = document.getElementById('cal-overlay');
     const closeBtn = document.getElementById('cal-close');
@@ -132,10 +58,9 @@
 
     let calendlyLoaded = false;
 
-    // Charge Calendly une seule fois
     function ensureCalendlyLoaded(){
       if (calendlyLoaded) return;
-      calBody.innerHTML = `<div class="calendly-inline-widget" data-url="https://calendly.com/aqisio/presentation?hide_event_type_details=1&hide_gdpr_banner=1" style="min-width:320px;height:100%;"></div>`;
+      calBody.innerHTML = `<div class='calendly-inline-widget' data-url='https://calendly.com/aqisio/presentation?hide_event_type_details=1&hide_gdpr_banner=1'></div>`;
       const s = document.createElement('script');
       s.src = 'https://assets.calendly.com/assets/external/widget.js';
       s.async = true;
@@ -143,21 +68,18 @@
       calendlyLoaded = true;
     }
 
-    // Ouvre / ferme le Calendly
     function openCalendly(){ ensureCalendlyLoaded(); overlay.classList.add('open'); }
     function closeCalendly(){ overlay.classList.remove('open'); }
 
     closeBtn.addEventListener('click', closeCalendly);
-    ctaEl.addEventListener('click', (e)=>{ e.preventDefault(); openCalendly(); });
+    ctaEl.addEventListener('click', e => { e.preventDefault(); openCalendly(); });
 
-    // Si pas d'ID vidéo → message d'erreur
     if (!id) {
       const err = document.createElement('div');
       err.className = 'error';
       err.innerHTML = `<strong>Erreur :</strong> aucun paramètre <code>id</code> trouvé dans l’URL.`;
       document.querySelector('.shell').replaceWith(err);
     } else {
-      // Crée le lecteur vidéo Cloudflare Stream
       const src = `https://iframe.videodelivery.net/${encodeURIComponent(id)}?controls=true&playsinline=true&defaultTextTrack=fr`;
       const iframe = document.createElement('iframe');
       iframe.id = 'stream-player';
@@ -166,16 +88,20 @@
       iframe.allowFullscreen = true;
       root.replaceChildren(iframe);
 
-      // Ouvre Calendly automatiquement quand la vidéo se termine
-      window.addEventListener('message', (ev)=>{
-        try{
+      // Débogage pour vérifier les événements reçus
+      window.addEventListener('message', ev => {
+        try {
           const host = ev.origin ? new URL(ev.origin).hostname : '';
           if (host && !host.endsWith('videodelivery.net')) return;
           let data = ev.data;
           if (typeof data === 'string') { try { data = JSON.parse(data); } catch(_){} }
+          console.log('[Cloudflare Message]', data);
           const evt = data && (data.event || (data.msg && data.msg.event));
-          if (evt === 'ended') openCalendly();
-        }catch(_){ }
+          if (evt === 'ended') {
+            console.log('Événement ended détecté — ouverture Calendly');
+            openCalendly();
+          }
+        } catch (_) {}
       });
     }
   </script>
