@@ -4,11 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Regardez la Vidéo — Aqisio</title>
-  <!--
-    But : vidéo la + grande possible, stable sur tous navigateurs.
-    Changement clé : on abandonne aspect-ratio sur <iframe> (qui peut être
-    capricieux) pour un wrapper responsive classique (padding-top 56.25%).
-  -->
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; }
@@ -17,23 +12,28 @@
       background: #0b0b0b;
       color: #fff;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      display: grid;
-      place-items: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
       min-height: 100dvh;
+      gap: 24px;
     }
 
-    /*
-      Zone centrale : on limite à 1280px mais on remplit jusqu'à 92vw.
-      On force un ratio 16/9 via le "padding-top".
-    */
+    h1 {
+      margin: 0;
+      font-size: 1.6rem;
+      text-align: center;
+      font-weight: 600;
+    }
+
     .frame {
       width: clamp(320px, 92vw, 1280px);
       max-width: 1280px;
       position: relative;
-      /* 16/9 => 9/16 = 56.25% */
       padding-top: 56.25%;
       background: #000;
-      border-radius: 12px; /* optionnel, visuel discret */
+      border-radius: 12px;
       overflow: hidden;
     }
     .frame iframe {
@@ -43,6 +43,22 @@
       height: 100%;
       border: 0;
     }
+
+    .cta {
+      display: inline-block;
+      background: #006BFF;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+      padding: 14px 22px;
+      border-radius: 8px;
+      position: relative;
+      bottom: 0;
+      align-self: flex-end;
+      margin-right: 4vw;
+      transition: background 0.2s ease;
+    }
+    .cta:hover { background: #0055cc; }
 
     .error {
       max-width: 680px;
@@ -58,17 +74,31 @@
   </style>
 </head>
 <body>
+  <h1 id="page-title">Regardez la Vidéo</h1>
   <div id="root"></div>
+  <a id="cta" href="#" class="cta" style="display:none;">📞 Réservez un Rendez-Vous</a>
 
   <script>
-    // Récupération des paramètres d'URL
     const qs = new URLSearchParams(location.search);
     const f  = (qs.get('f')  || '').trim();
     const l  = (qs.get('l')  || '').trim();
     const id = (qs.get('id') || '').trim();
     const d  = (qs.get('d')  || '').trim();
 
-    if (f || l) document.title = `${f} ${l} — Regardez la Vidéo`;
+    const titleEl = document.getElementById('page-title');
+    const ctaEl   = document.getElementById('cta');
+
+    // Titre dynamique
+    const fullName = [f, l].filter(Boolean).join(' ');
+    const displayName = fullName || '';
+    document.title = fullName ? `${fullName} - Regardez la Vidéo` : 'Regardez la Vidéo — Aqisio';
+    titleEl.textContent = fullName ? `${fullName} - Regardez la Vidéo` : 'Regardez la Vidéo';
+
+    // CTA dynamique
+    if (f) {
+      ctaEl.textContent = `📞 ${f}, Réservez un Rendez-Vous`;
+    }
+    ctaEl.style.display = 'inline-block';
 
     const root = document.getElementById('root');
 
@@ -82,7 +112,6 @@
       `;
       root.replaceChildren(err);
     } else {
-      // Wrapper responsive, l'iframe occupe 100% de la zone
       const frame = document.createElement('div');
       frame.className = 'frame';
 
