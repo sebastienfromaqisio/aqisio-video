@@ -154,8 +154,8 @@
       err.innerHTML = `<strong>Erreur :</strong> aucun paramètre <code>id</code> trouvé dans l’URL.`;
       document.querySelector('.shell').replaceWith(err);
     } else {
-      const CUSTOMER_CODE = 'g5chvqfq5q94nqo';
-      const src = `https://customer-${CUSTOMER_CODE}.cloudflarestream.com/${encodeURIComponent(id)}/iframe?controls=true&playsinline=true&defaultTextTrack=fr`;
+      // Utilise par défaut videodelivery.net (fiable, pas de 404)
+      const src = `https://iframe.videodelivery.net/${encodeURIComponent(id)}?controls=true&playsinline=true&defaultTextTrack=fr`;
 
       const iframe = document.createElement('iframe');
       iframe.id = 'stream-player';
