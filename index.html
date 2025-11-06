@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Regardez la Vidéo — Aqisio</title>
 
+  <!--
+    🔹 OBJECTIF
+    LP la plus simple possible.
+    → Affiche la vidéo Cloudflare Stream selon l’UID passé dans ?id=
+    → Aucun élément décoratif.
+    → Design centré, responsive, rapide à charger.
+  -->
+
   <style>
     :root { color-scheme: dark; }
     body {
@@ -12,61 +20,73 @@
       background: #0b0b0b;
       color: #fff;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      display: grid;
-      place-items: center;
+      display: flex;
+      justify-content: center;
+      align-items: center;
       min-height: 100dvh;
     }
-    iframe {
-      width: 100%;
-      max-width: 960px;
-      aspect-ratio: 16 / 9;
-      border: none;
+    .player {
+      width: min(960px, 100%);
+      aspect-ratio: 16/9;
+      border: 0;
       border-radius: 12px;
       background: #000;
     }
     .error {
-      color: #ffbaba;
+      max-width: 600px;
+      padding: 20px;
       background: #2b1111;
-      padding: 16px;
+      color: #ffd7d7;
       border-radius: 10px;
       font-size: 15px;
-      line-height: 1.4;
+      line-height: 1.5;
     }
+    code { color: #ffb4b4; }
   </style>
 </head>
 <body>
-  <main id="app">
-    <div id="video-slot"></div>
-    <noscript>
-      <div class="error">Activez JavaScript pour afficher la vidéo.</div>
-    </noscript>
-  </main>
+  <div id="video-slot"></div>
 
   <script>
-    // ────────────────────────────────
-    // Récupération des paramètres d'URL
-    // ────────────────────────────────
+    // ────────────────────────────────────────────────
+    // Lecture des paramètres d’URL
+    // ────────────────────────────────────────────────
     const qs = new URLSearchParams(window.location.search);
+    const f  = (qs.get('f')  || '').trim();
+    const l  = (qs.get('l')  || '').trim();
     const id = (qs.get('id') || '').trim();
+    const d  = (qs.get('d')  || '').trim();
+
+    // Mise à jour du titre si prénom/nom présents
+    if (f || l) {
+      document.title = `${f} ${l} — Regardez la Vidéo`;
+    }
 
     const videoSlot = document.getElementById('video-slot');
 
+    // ────────────────────────────────────────────────
+    // Affichage : vidéo ou message d’erreur
+    // ────────────────────────────────────────────────
     if (!id) {
       const err = document.createElement('div');
       err.className = 'error';
       err.innerHTML = `
-        <strong>Erreur :</strong> aucun paramètre <code>id</code> trouvé.<br><br>
-        Exemple :<br>
+        <strong>Erreur :</strong> aucun paramètre <code>id</code> trouvé dans l’URL.<br><br>
+        Exemple d’URL correcte :<br>
         <code>?f=Cyril&l=GUERRY&id=0bf4f564089a51d49d457a4ce0b6fede&d=2025-01-01</code>
       `;
       videoSlot.replaceChildren(err);
     } else {
       const iframeSrc = `https://iframe.videodelivery.net/${encodeURIComponent(id)}?controls=true&playsinline=true&defaultTextTrack=fr`;
+
       const iframe = document.createElement('iframe');
+      iframe.id = 'stream-player';
+      iframe.className = 'player';
       iframe.src = iframeSrc;
       iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
       iframe.allowFullscreen = true;
-      iframe.title = 'Vidéo Aqisio';
+      iframe.setAttribute('title', 'Lecteur vidéo Cloudflare Stream');
+
       videoSlot.replaceChildren(iframe);
     }
   </script>
