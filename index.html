@@ -3,47 +3,130 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vidéo</title>
+  <title>Vidéo</title> <!-- sera remplacé dynamiquement par "Prénom, regardez la vidéo !" -->
+
   <style>
+    /* --- Layout minimal, perf --- */
     html, body { margin:0; height:100%; background:#000; overflow:hidden; }
     .video-wrapper { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
-    iframe { width:100vw; height:100vh; border:0; object-fit:cover; }
+    iframe#player { width:100vw; height:100vh; border:0; object-fit:cover; }
+
+    /* --- CTA : fixe, visible, mobile-friendly (safe-areas iOS) --- */
+    .cta {
+      position:fixed;
+      right: max(16px, env(safe-area-inset-right));
+      bottom: max(16px, env(safe-area-inset-bottom));
+      z-index: 30;
+      background:#006BFF; color:#fff; border:0; border-radius:14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font-weight: 600; line-height:1; letter-spacing:.2px;
+      padding: 14px 16px; box-shadow: 0 8px 24px rgba(0,0,0,.25);
+      cursor:pointer; user-select:none; -webkit-tap-highlight-color: transparent;
+    }
+    .cta:active { transform: translateY(1px); }
+
+    /* --- Modal Calendly : plein écran, au-dessus de la vidéo --- */
+    .modal {
+      position: fixed; inset: 0; z-index: 50; display: none;
+      background: rgba(0,0,0,.65);
+      backdrop-filter: blur(2px);
+    }
+    .modal__panel {
+      position: absolute; inset: clamp(8px, 4vw, 24px);
+      background: #fff; border-radius: 16px; overflow: hidden;
+      display:flex; flex-direction: column;
+      box-shadow: 0 20px 48px rgba(0,0,0,.35);
+    }
+    .modal__head {
+      display:flex; align-items:center; justify-content: space-between;
+      padding: 10px 12px; background:#0b1220; color:#fff;
+      font: 600 14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    .modal__close {
+      appearance:none; border:0; background:transparent; color:#fff; cursor:pointer;
+      font-size:18px; padding:6px; line-height:1;
+    }
+    .modal__body {
+      flex:1; min-height: 420px; /* garde de la place même sur petits écrans */
+      background:#fff;
+    }
+    /* Le widget inline Calendly prendra 100% de la zone body */
+    .calendly-inline-widget { width: 100%; height: 100%; min-width: 320px; }
   </style>
-  <!-- SDK du Player Cloudflare -->
+
+  <!-- SDK du Player Cloudflare (API d'événements) -->
   <script src="https://embed.cloudflarestream.com/embed/sdk.latest.js?v=2" defer></script>
+
+  <!-- Script Calendly (chargé d'avance, async) -->
+  <script src="https://assets.calendly.com/assets/external/widget.js" async></script>
 </head>
+
 <body>
+  <!-- VIDEO -->
   <div class="video-wrapper">
     <iframe id="player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="eager"></iframe>
+  </div>
+
+  <!-- CTA -->
+  <button id="cta" class="cta">📞 Réservez un Rendez-Vous !</button>
+
+  <!-- MODAL CALENDLY -->
+  <div id="cal-modal" class="modal" aria-hidden="true">
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-label="Réserver un rendez-vous">
+      <div class="modal__head">
+        <span id="modal-title">Réserver un rendez-vous</span>
+        <button class="modal__close" id="cal-close" aria-label="Fermer">✕</button>
+      </div>
+      <div class="modal__body">
+        <!-- Début de widget en ligne Calendly -->
+        <div
+          class="calendly-inline-widget"
+          data-url="https://calendly.com/aqisio/presentation?hide_event_type_details=1&hide_gdpr_banner=1">
+        </div>
+        <!-- Fin de widget en ligne Calendly -->
+      </div>
+    </div>
   </div>
 
   <script>
     (function () {
       "use strict";
 
-      // --- Params URL ---
+      /* ============================
+       * 1) PARAMS URL & PERSONNALISATION
+       * ============================ */
       const qp = new URLSearchParams(location.search);
-      const f  = (qp.get("f")  || "").trim();
-      const l  = (qp.get("l")  || "").trim();
-      const id = (qp.get("id") || "").trim();
-      const d  = (qp.get("d")  || "").trim();
+      const firstName = (qp.get("f") || "").trim();
+      const lastName  = (qp.get("l") || "").trim();
+      const id        = (qp.get("id")|| "").trim();
+      const d         = (qp.get("d") || "").trim();
+
       if (!/^[a-f0-9]{32}$/i.test(id)) { console.error("Stream ID invalide"); return; }
 
-      // --- Session stable pour ce visionnage ---
+      // Titre d'onglet & CTA personnalisés
+      const prettyF = firstName || "Vous";
+      document.title = `${prettyF}, regardez la vidéo !`;
+      const cta = document.getElementById("cta");
+      cta.textContent = `📞 ${prettyF}, Réservez un Rendez-Vous !`;
+
+      /* ============================
+       * 2) SESSION & PLAYER
+       * ============================ */
       const sessionId =
         (self.crypto && crypto.randomUUID)
           ? `sid_${id.slice(0,8)}_${crypto.randomUUID().slice(0,8)}`
           : `sid_${id.slice(0,8)}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,6)}`;
 
-      // --- Player (iframe API, pas /watch) ---
       const $iframe = document.getElementById("player");
-      $iframe.src = `https://iframe.cloudflarestream.com/${id}?v=2`; // cache-busting léger
+      $iframe.src = `https://iframe.cloudflarestream.com/${id}?v=2`; // player API (pas /watch)
 
-      // --- Tracking helper ---
+      /* ============================
+       * 3) TRACKING helper -> Apps Script
+       * ============================ */
       const WEB_APP = "https://script.google.com/macros/s/AKfycbyFxJ2lUMtuB44kud-xGFcMGudW2J5G2UWMD2QtjvolJiUpRtA4zeX9e4_KieRIlzaF-g/exec";
       function ping(ev, extra) {
         const base = {
-          ev, f, l, id, d, sessionId,
+          ev, f:firstName, l:lastName, id, d, sessionId,
           ua: navigator.userAgent,
           ref: document.referrer || "",
           w: String(window.innerWidth || 0),
@@ -66,22 +149,49 @@
         const key = `aqi_opened_${id}_${d||"nodate"}`;
         const first = !localStorage.getItem(key);
         try { localStorage.setItem(key,"1"); } catch(e){}
-        ping("opened", { first: first ? "1" : "0", cur: "0", dur: "0" });
+        ping("opened", { first: first ? "1" : "0", cur:"0", dur:"0" });
       })();
 
-      // --- Écoute player + TIMER 1s ---
+      /* ============================
+       * 4) MODAL CALENDLY (open/close)
+       * ============================ */
+      const modal = document.getElementById("cal-modal");
+      const closeBtn = document.getElementById("cal-close");
+
+      let calendlyShown = false;
+      function showCalendly(){
+        if (calendlyShown) return;
+        calendlyShown = true;
+        modal.style.display = "block";
+        modal.setAttribute("aria-hidden","false");
+        ping("calendly_open");
+      }
+      function hideCalendly(){
+        modal.style.display = "none";
+        modal.setAttribute("aria-hidden","true");
+        // (Pas de ping nécessaire à la fermeture, sauf si tu veux `calendly_close`)
+      }
+      closeBtn.addEventListener("click", hideCalendly);
+      modal.addEventListener("click", (e)=>{ if(e.target === modal) hideCalendly(); });
+      window.addEventListener("keydown", (e)=>{ if(e.key === "Escape") hideCalendly(); });
+
+      // CTA -> ouvre Calendly
+      cta.addEventListener("click", function(){
+        ping("cta_click");
+        showCalendly();
+      });
+
+      /* ============================
+       * 5) PLAYER EVENTS + TRACKING 1s
+       * ============================ */
       function onReady(cb){ (document.readyState === "complete" ? cb : window.addEventListener("load", cb)); }
       onReady(function(){
         if (typeof Stream !== "function") { console.error("SDK Stream indisponible"); return; }
         const player = Stream($iframe);
 
         let duration = 0;
-        let launchedSent = false;
-
-        // seconds déjà envoyées pour cette session
+        let Launched = false;
         const sentSeconds = new Set();
-
-        // timer de “poll” 1s (uniquement quand la vidéo joue)
         let tick = null;
 
         const getTimes = () => {
@@ -98,38 +208,31 @@
             const s = Number(t.cur);
             if (!sentSeconds.has(s)) {
               sentSeconds.add(s);
-              ping("sec", t);               // <-- UNE LIGNE PAR SECONDE
+              ping("sec", t);     // ← 1 ping par seconde lue
             }
           }, 1000);
         }
-        function stopTick(){
-          if (tick) { clearInterval(tick); tick = null; }
-        }
+        function stopTick(){ if (tick) { clearInterval(tick); tick = null; } }
 
         player.addEventListener("durationchange", () => {
           const du = Math.floor(Number(player.duration || 0));
           if (du > 0) duration = du;
         });
-
         player.addEventListener("playing", () => {
-          if (!launchedSent) { launchedSent = true; ping("launched", getTimes()); }
+          if (!Launched) { Launched = true; ping("launched", getTimes()); }
           startTick();
         });
-
-        player.addEventListener("pause", () => {
-          ping("pause", getTimes());
-          stopTick();
-        });
-
+        player.addEventListener("pause", () => { ping("pause", getTimes()); stopTick(); });
         player.addEventListener("ended", () => {
           const t = getTimes();
           const s = Number(t.cur);
           if (!sentSeconds.has(s)) { sentSeconds.add(s); ping("sec", t); }
           ping("completed", t);
           stopTick();
+          showCalendly();         // ← ouvre Calendly à la fin de la vidéo
         });
 
-        // Seek (facultatif, utile pour l’analyse fine)
+        // Seek (optionnel)
         let seekFrom = 0;
         player.addEventListener("seeking", () => { seekFrom = Number(getTimes().cur); });
         player.addEventListener("seeked",  () => {
@@ -137,13 +240,9 @@
           ping("seek", Object.assign({}, t, { from: String(seekFrom), to: t.cur }));
         });
 
-        // Dernier point si l’onglet se ferme
-        window.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "hidden") ping("hidden", getTimes());
-        });
-        window.addEventListener("pagehide", () => {
-          ping("pagehide", getTimes());
-        });
+        // En cas de fermeture onglet
+        window.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") ping("hidden", getTimes()); });
+        window.addEventListener("pagehide", () => { ping("pagehide", getTimes()); });
       });
     })();
   </script>
