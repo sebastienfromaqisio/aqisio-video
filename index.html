@@ -107,8 +107,6 @@
     </div>
   </div>
 
-  <script src="https://embed.cloudflarestream.com/embed/sdk.latest.js"></script>
-
   <script>
     const qs = new URLSearchParams(location.search);
     const f  = (qs.get('f')  || '').trim();
@@ -156,8 +154,7 @@
       err.innerHTML = `<strong>Erreur :</strong> aucun paramètre <code>id</code> trouvé dans l’URL.`;
       document.querySelector('.shell').replaceWith(err);
     } else {
-      // ⚠️ Retour provisoire à videodelivery.net pour supprimer l'erreur 404
-      // (le domaine customer-<code> sera remis quand on aura confirmé le bon code exact)
+      // Embed videodelivery.net stable
       const src = `https://iframe.videodelivery.net/${encodeURIComponent(id)}?controls=true&playsinline=true&defaultTextTrack=fr`;
 
       const iframe = document.createElement('iframe');
@@ -168,32 +165,17 @@
       iframe.title = 'Lecteur vidéo Cloudflare Stream';
       root.replaceChildren(iframe);
 
-      // Listener robuste via postMessage (diagnostic inclus)
+      // Listener via postMessage (sans erreurs JS)
       window.addEventListener('message', (ev)=>{
         try{
-          // LOG DIAGNOSTIC : enlève si bruit
-          console.debug('[CF message]', ev.origin, ev.data);
-
           const host = ev.origin ? new URL(ev.origin).hostname : '';
           if (host && !host.endsWith('videodelivery.net')) return;
-
           let data = ev.data;
           if (typeof data === 'string') { try { data = JSON.parse(data); } catch(_){} }
-
           const evt = data && (data.event || (data.msg && data.msg.event));
-          if (evt === 'ended') {
-            openCalendly('ended');
-          }
+          if (evt === 'ended') openCalendly('ended');
         }catch(_){ }
-      }););
-        player.addEventListener('timeupdate', () => {
-          try{
-            const dur = player.duration || 0;
-            const cur = player.currentTime || 0;
-            if (dur > 0 && cur / dur >= 0.995) openCalendly('ended');
-          }catch(_){ }
-        });
-      }
+      });
     }
   </script>
 </body>
