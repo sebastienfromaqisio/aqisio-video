@@ -12,26 +12,24 @@
       background: #0b0b0b;
       color: #fff;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      display: grid;
+      place-items: center;
       min-height: 100dvh;
-      gap: 24px;
+      padding: 16px;
     }
 
-    h1 {
-      margin: 0;
-      font-size: 1.6rem;
-      text-align: center;
-      font-weight: 600;
-    }
-
-    .frame {
+    /* Conteneur centré qui fixe la largeur de la vidéo ET du CTA */
+    .shell{
       width: clamp(320px, 92vw, 1280px);
-      max-width: 1280px;
+      display: grid;
+      gap: 16px; /* espace entre vidéo et bouton */
+    }
+
+    /* Wrapper responsive 16:9 pour le lecteur */
+    .frame {
+      width: 100%;
       position: relative;
-      padding-top: 56.25%;
+      padding-top: 56.25%; /* 16:9 */
       background: #000;
       border-radius: 12px;
       overflow: hidden;
@@ -44,25 +42,32 @@
       border: 0;
     }
 
+    /* Ligne du CTA alignée sur le bord droit de la vidéo */
+    .cta-row{
+      display: flex;
+      justify-content: flex-end; /* aligne le bord droit du bouton avec celui de la vidéo */
+      position: sticky;           /* reste visible dans la fenêtre si on scrolle */
+      bottom: calc(16px + env(safe-area-inset-bottom));
+      z-index: 10;
+    }
     .cta {
       display: inline-block;
       background: #006BFF;
       color: #fff;
       text-decoration: none;
-      font-weight: 600;
-      padding: 14px 22px;
-      border-radius: 8px;
-      position: relative;
-      bottom: 0;
-      align-self: flex-end;
-      margin-right: 4vw;
-      transition: background 0.2s ease;
+      font-weight: 700;
+      padding: 16px 24px;      /* légèrement plus gros */
+      border-radius: 12px;      /* plus arrondi */
+      transition: background 0.2s ease, transform 0.05s ease;
+      box-shadow: 0 6px 14px rgba(0,0,0,.35);
+      will-change: transform;
     }
     .cta:hover { background: #0055cc; }
+    .cta:active{ transform: translateY(1px); }
 
     .error {
       max-width: 680px;
-      margin: 24px;
+      margin: 24px auto;
       padding: 20px;
       background: #2b1111;
       color: #ffd7d7;
@@ -74,9 +79,12 @@
   </style>
 </head>
 <body>
-  <h1 id="page-title">Regardez la Vidéo</h1>
-  <div id="root"></div>
-  <a id="cta" href="#" class="cta" style="display:none;">📞 Réservez un Rendez-Vous</a>
+  <div class="shell">
+    <div id="root" class="frame"></div>
+    <div class="cta-row">
+      <a id="cta" href="#" class="cta" style="display:none;" aria-label="Réserver un rendez-vous">📞 Réservez un Rendez-Vous</a>
+    </div>
+  </div>
 
   <script>
     const qs = new URLSearchParams(location.search);
@@ -85,19 +93,13 @@
     const id = (qs.get('id') || '').trim();
     const d  = (qs.get('d')  || '').trim();
 
-    const titleEl = document.getElementById('page-title');
-    const ctaEl   = document.getElementById('cta');
-
-    // Titre dynamique
+    // Titre d'onglet (uniquement)
     const fullName = [f, l].filter(Boolean).join(' ');
-    const displayName = fullName || '';
     document.title = fullName ? `${fullName} - Regardez la Vidéo` : 'Regardez la Vidéo — Aqisio';
-    titleEl.textContent = fullName ? `${fullName} - Regardez la Vidéo` : 'Regardez la Vidéo';
 
-    // CTA dynamique
-    if (f) {
-      ctaEl.textContent = `📞 ${f}, Réservez un Rendez-Vous`;
-    }
+    // CTA dynamique (texte + affichage)
+    const ctaEl = document.getElementById('cta');
+    if (f) ctaEl.textContent = `📞 ${f}, Réservez un Rendez-Vous`;
     ctaEl.style.display = 'inline-block';
 
     const root = document.getElementById('root');
@@ -110,20 +112,16 @@
         Exemple d’URL correcte :<br>
         <code>?f=Cyril&l=GUERRY&id=0bf4f564089a51d49d457a4ce0b6fede&d=2025-01-01</code>
       `;
-      root.replaceChildren(err);
+      // Remplace le wrapper par l'erreur pour rester visible
+      document.querySelector('.shell').replaceWith(err);
     } else {
-      const frame = document.createElement('div');
-      frame.className = 'frame';
-
       const iframe = document.createElement('iframe');
       iframe.id = 'stream-player';
       iframe.src = `https://iframe.videodelivery.net/${encodeURIComponent(id)}?controls=true&playsinline=true&defaultTextTrack=fr`;
       iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
       iframe.allowFullscreen = true;
       iframe.title = 'Lecteur vidéo Cloudflare Stream';
-
-      frame.appendChild(iframe);
-      root.replaceChildren(frame);
+      root.replaceChildren(iframe);
     }
   </script>
 </body>
