@@ -189,7 +189,7 @@
       cta.textContent = `📞 ${prettyF}, Réservez un Rendez-Vous !`;
 
       /* ============================
-       * 2) SESSION & PLAYER (Corrigé avec Poster)
+       * 2) SESSION & PLAYER (Corrigé)
        * ============================ */
       const sessionId = (self.crypto && crypto.randomUUID)
         ? `sid_${id.slice(0,8)}_${crypto.randomUUID().slice(0,8)}`
@@ -201,14 +201,13 @@
       const CUSTOMER_HASH = "customer-f33zs165nr7gyfy4.cloudflarestream.com"; // <-- VÉRIFIEZ CECI
 
       // 2. Construisez l'URL de la thumbnail animée (GIF)
-      //    (Ajustez les paramètres 'height', 'duration', 'time' ici)
+      //    (CORRECTION : Suppression du "://" en trop)
       const posterUrl = `https://${CUSTOMER_HASH}/${id}/thumbnails/thumbnail.gif?time=1s&height=720&duration=4s&fps=12`;
 
       // 3. Encodez cette URL pour la passer en paramètre
       const encodedPosterUrl = encodeURIComponent(posterUrl);
 
       // 4. Mettez à jour l'URL de l'iframe pour inclure le "poster" et les "sous-titres"
-      //    (C'est ici que se trouvait mon erreur, elle est corrigée)
       iframe.src = `https://iframe.cloudflarestream.com/${id}?v=3&defaultTextTrack=fr&poster=${encodedPosterUrl}`;
 
 
