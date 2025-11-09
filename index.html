@@ -5,31 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Vidéo</title>
 
-  <!-- Préconnexions Cloudflare Stream (player + assets) -->
+  <!-- PERF PRIORITÉ VIDÉO : rien de bloquant, tout en async/defer -->
+  <!-- Cloudflare Stream: réchauffage -->
   <link rel="dns-prefetch" href="https://iframe.cloudflarestream.com">
   <link rel="preconnect" href="https://iframe.cloudflarestream.com" crossorigin>
   <link rel="dns-prefetch" href="https://embed.cloudflarestream.com">
   <link rel="preconnect" href="https://embed.cloudflarestream.com" crossorigin>
-  <link rel="dns-prefetch" href="https://videodelivery.net">
-  <link rel="preconnect" href="https://videodelivery.net" crossorigin>
-  <link rel="dns-prefetch" href="https://imagedelivery.net">
-  <link rel="preconnect" href="https://imagedelivery.net" crossorigin>
 
-  <!-- Calendly chargé à la demande (pas de script ici) -->
+  <!-- Calendly: réchauffage + préchargement du script (puis async) -->
+  <link rel="dns-prefetch" href="https://assets.calendly.com">
+  <link rel="preconnect" href="https://assets.calendly.com" crossorigin>
   <link rel="dns-prefetch" href="https://calendly.com">
   <link rel="preconnect" href="https://calendly.com" crossorigin>
+  <link rel="preload" as="script" href="https://assets.calendly.com/assets/external/widget.js">
 
   <style>
     :root { --gap: clamp(12px, 3vw, 32px); }
     html, body { margin:0; height:100%; background:#000; overflow:hidden; }
 
+    /* scène centrée avec marge respirante */
     .stage { position: fixed; inset: 0; display:flex; align-items:center; justify-content:center; padding: var(--gap); box-sizing: border-box; background:#000; }
-    .frame { width: clamp(320px, 88vw, 1100px); aspect-ratio: 16 / 9; max-height: 68vh; border-radius: 14px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.35); background:#000; position:relative; }
+    .frame { width: clamp(320px, 88vw, 1100px); aspect-ratio: 16 / 9; max-height: 68vh; border-radius: 14px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.35); background:#000; }
     @media (max-width: 640px) { .frame { width: 96vw; max-height: 58vh; } }
-
-    #player, #poster { width: 100%; height: 100%; border: 0; object-fit: cover; background:#000; display:block; }
-    #player { position: absolute; inset: 0; z-index: 2; }
-    #poster { position: absolute; inset: 0; z-index: 3; cursor: pointer; }
+    #player { width: 100%; height: 100%; border: 0; object-fit: cover; background:#000; }
 
     /* CTA */
     .cta {
@@ -42,7 +40,7 @@
     .cta:active { transform: translateY(1px); }
     @media (min-width: 1024px) { .cta { padding: 22px 26px; font-size: 18px; border-radius:20px; } }
 
-    /* Modal Calendly */
+    /* Modal Calendly (pré-initialisé mais caché → prêt instantanément au clic/fin vidéo) */
     .modal { position:fixed; inset:0; z-index:50; display:none; background:rgba(0,0,0,.65); backdrop-filter:blur(2px); }
     .modal__panel { position:absolute; inset: var(--gap); background:#fff; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; box-shadow: 0 20px 60px rgba(0,0,0,.45); }
     .modal__head { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#0b1220; color:#fff; font:600 14px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
@@ -51,42 +49,23 @@
     .calendly-inline-widget { width:100%; height:100%; min-width:320px; }
   </style>
 
-  <!-- SDK Stream pour les events/tracking -->
+  <!-- CF Player SDK (defer = non bloquant) -->
   <script src="https://embed.cloudflarestream.com/embed/sdk.latest.js?v=3" defer></script>
-
-  <!-- Préload du poster le plus tôt possible (selon query) -->
-  <script>
-    (function preloadPoster(){
-      try {
-        const qp = new URLSearchParams(location.search);
-        const id = (qp.get("id") || "").trim();
-        const posterParam = (qp.get("poster") || "").trim();
-        if (!/^[a-f0-9]{32}$/i.test(id) && !posterParam) return;
-
-        // Si poster fourni : on l'utilise. Sinon, on prend une vignette JPG sur videodelivery.net
-        const posterSrc = posterParam || `https://videodelivery.net/${id}/thumbnails/thumbnail.jpg?time=1s&height=720&fit=clip`;
-
-        const link = document.createElement('link');
-        link.rel = 'preload';
-        link.as = 'image';
-        link.href = posterSrc;
-        link.setAttribute('imagesizes', '100vw');
-        document.head.appendChild(link);
-      } catch (_) {}
-    })();
-  </script>
+  <!-- Calendly (le script a été preloaded ; async = non bloquant) -->
+  <script src="https://assets.calendly.com/assets/external/widget.js" async></script>
 </head>
 <body>
+  <!-- Vidéo -->
   <div class="stage">
     <div class="frame">
-      <!-- Player en dessous, poster au-dessus (z-index) -->
-      <iframe id="player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen hidden></iframe>
-      <img id="poster" alt="Cliquer pour lancer la vidéo" decoding="async" fetchpriority="high">
+      <iframe id="player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="eager"></iframe>
     </div>
   </div>
 
+  <!-- CTA -->
   <button id="cta" class="cta">📞 Réservez un Rendez-Vous !</button>
 
+  <!-- Modal Calendly (caché mais présent → prêt dès que le script charge) -->
   <div id="cal-modal" class="modal" aria-hidden="true">
     <div class="modal__panel" role="dialog" aria-modal="true" aria-label="Réserver un rendez-vous">
       <div class="modal__head">
@@ -105,14 +84,14 @@
     (function () {
       "use strict";
 
-      /* ========== 1) PARAMS & UI ========== */
+      /* ============================
+       * 1) PARAMS & PERSONNALISATION
+       * ============================ */
       const qp = new URLSearchParams(location.search);
       const f  = (qp.get("f")  || "").trim();
       const l  = (qp.get("l")  || "").trim();
       const id = (qp.get("id") || "").trim();
       const d  = (qp.get("d")  || "").trim();
-      const posterParam = (qp.get("poster") || "").trim();
-
       if (!/^[a-f0-9]{32}$/i.test(id)) { console.error("Stream ID invalide"); return; }
 
       const prettyF = f || "Vous";
@@ -120,46 +99,21 @@
       const cta = document.getElementById("cta");
       cta.textContent = `📞 ${prettyF}, Réservez un Rendez-Vous !`;
 
-      /* ========== 2) ELEMENTS & SOURCES ========== */
-      const iframe = document.getElementById("player");
-      const posterEl = document.getElementById("poster");
-
-      // Poster (image ou gif)
-      const posterSrc = posterParam || `https://videodelivery.net/${id}/thumbnails/thumbnail.jpg?time=1s&height=720&fit=clip`;
-      posterEl.src = posterSrc;
-
-      // Déterminer automatiquement la meilleure URL d'embed pour le player :
-      // - si posterParam pointe vers un "customer-xxx.cloudflarestream.com", on utilise ce domaine: /<id>/iframe
-      // - sinon, fallback vers iframe.cloudflarestream.com/<id>
-      function computePlayerUrls() {
-        let primary = `https://iframe.cloudflarestream.com/${id}?v=3&defaultTextTrack=fr`;
-        let backup = null;
-
-        try {
-          if (posterParam) {
-            const u = new URL(posterParam);
-            // Exemple: https://customer-xxxx.cloudflarestream.com/<id>/thumbnails/...
-            if (u.hostname.endsWith('.cloudflarestream.com') && u.hostname.startsWith('customer-')) {
-              const customerBase = `${u.protocol}//${u.hostname}`;
-              primary = `${customerBase}/${id}/iframe?defaultTextTrack=fr`; // player du customer domain
-              backup  = `https://iframe.cloudflarestream.com/${id}?v=3&defaultTextTrack=fr`; // fallback public
-            } else if (u.hostname.endsWith('videodelivery.net')) {
-              // si poster sur videodelivery.net, on garde iframe.cloudflarestream.com en primary
-              primary = `https://iframe.cloudflarestream.com/${id}?v=3&defaultTextTrack=fr`;
-            }
-          }
-        } catch(e) { /* ignore */ }
-
-        return { primary, backup };
-      }
-
-      const { primary: PLAYER_PRIMARY, backup: PLAYER_BACKUP } = computePlayerUrls();
-
-      /* ========== 3) TRACKING helper ========== */
+      /* ============================
+       * 2) SESSION & PLAYER
+       * ============================ */
       const sessionId = (self.crypto && crypto.randomUUID)
         ? `sid_${id.slice(0,8)}_${crypto.randomUUID().slice(0,8)}`
         : `sid_${id.slice(0,8)}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,6)}`;
 
+      const iframe = document.getElementById("player");
+      // Player API (pas /watch) — priorité perf: l’iframe se charge tout de suite
+      // Sous-titres fr par défaut via paramètre d'URL (BCP47: 'fr')
+      iframe.src = `https://iframe.cloudflarestream.com/${id}?v=3&defaultTextTrack=fr`;
+
+      /* ============================
+       * 3) TRACKING helper (non bloquant)
+       * ============================ */
       const WEB_APP = "https://script.google.com/macros/s/AKfycbyFxJ2lUMtuB44kud-xGFcMGudW2J5G2UWMD2QtjvolJiUpRtA4zeX9e4_KieRIlzaF-g/exec";
       function ping(ev, extra) {
         const base = { ev, f, l, id, d, sessionId, ua:navigator.userAgent, ref:document.referrer||"", w:String(innerWidth||0), h:String(innerHeight||0), ts:String(Date.now()) };
@@ -179,85 +133,27 @@
         ping("opened", { first: first ? "1" : "0", cur:"0", dur:"0" });
       })();
 
-      /* ========== 4) CALENDLY À LA DEMANDE ========== */
+      /* ============================
+       * 4) CALENDLY MODAL (pré-initialisé, réouvrable)
+       * ============================ */
       const modal = document.getElementById("cal-modal");
       const closeBtn = document.getElementById("cal-close");
-      let calendlyLoaded = false;
-
-      function loadCalendly(cb){
-        if (calendlyLoaded) return cb && cb();
-        const s = document.createElement('script');
-        s.src = 'https://assets.calendly.com/assets/external/widget.js';
-        s.async = true;
-        s.onload = () => { calendlyLoaded = true; cb && cb(); };
-        document.head.appendChild(s);
-      }
-      function showCalendly(){
-        modal.style.display="block"; modal.setAttribute("aria-hidden","false");
-        ping("calendly_open");
-        loadCalendly();
-      }
+      function showCalendly(){ modal.style.display="block"; modal.setAttribute("aria-hidden","false"); ping("calendly_open"); }
       function hideCalendly(){ modal.style.display="none"; modal.setAttribute("aria-hidden","true"); }
-
       cta.addEventListener("click", ()=>{ ping("cta_click"); showCalendly(); });
       closeBtn.addEventListener("click", hideCalendly);
       modal.addEventListener("click", (e)=>{ if(e.target === modal) hideCalendly(); });
       addEventListener("keydown", (e)=>{ if(e.key==="Escape") hideCalendly(); });
 
-      /* ========== 5) PLAYER : CHARGEMENT & RÉVÉLATION ========== */
-      function setIframeSrcOnce(url){
-        if (!iframe.src) iframe.src = url;
-      }
-
-      // 1) Préparer le player dès que visible (sans l'afficher)
-      if ('IntersectionObserver' in window) {
-        const io = new IntersectionObserver(entries => {
-          if (entries.some(e => e.isIntersecting)) {
-            setIframeSrcOnce(PLAYER_PRIMARY);
-            io.disconnect();
-            // Fallback si ça ne charge pas (2 s)
-            setTimeout(() => {
-              if (!iframe.contentWindow && PLAYER_BACKUP) {
-                setIframeSrcOnce(PLAYER_BACKUP);
-              }
-            }, 2000);
-          }
-        });
-        io.observe(document.querySelector('.frame'));
-      } else {
-        setIframeSrcOnce(PLAYER_PRIMARY);
-      }
-
-      // 2) Clic sur le poster : montrer immédiatement le player (bouton Play visible)
-      function revealPlayer() {
-        // S'assurer qu'on a une src
-        setIframeSrcOnce(PLAYER_PRIMARY);
-        // Si au bout de 1.5 s l'iframe n'est pas initialisée, on tente l'autre URL
-        setTimeout(() => {
-          const hasWindow = !!iframe.contentWindow;
-          if (!hasWindow && PLAYER_BACKUP) setIframeSrcOnce(PLAYER_BACKUP);
-        }, 1500);
-
-        // Montrer le player maintenant (au-dessus ou à la place du poster)
-        iframe.hidden = false;
-        posterEl.hidden = true;
-      }
-      posterEl.addEventListener('click', revealPlayer, { passive:true });
-
-      /* ========== 6) SDK Stream + Tracking ========== */
+      /* ============================
+       * 5) PLAYER + TRACKING 1s
+       * ============================ */
       function onReady(cb){ (document.readyState === "complete" ? cb : addEventListener("load", cb)); }
-
       onReady(function(){
         if (typeof Stream !== "function") { console.error("SDK Stream indisponible"); return; }
         const player = Stream(iframe);
 
-        // Si le player démarre, on s'assure d'afficher l'iframe
-        player.addEventListener("playing", () => {
-          iframe.hidden = false;
-          posterEl.hidden = true;
-        });
-
-        // --- Tracking à la seconde ---
+        // --- Tracking à la seconde (client-side) ---
         let duration = 0, launched = false;
         const sentSeconds = new Set();
         let tick = null;
@@ -275,21 +171,15 @@
         player.addEventListener("pause",   ()=>{ ping("pause", getTimes()); stopTick(); });
         player.addEventListener("ended",   ()=>{ const t=getTimes(); const s=+t.cur; if(!sentSeconds.has(s)){ sentSeconds.add(s); ping("sec",t);} ping("completed", t); stopTick(); showCalendly(); });
 
+        // Seek (optionnel)
         let from=0; player.addEventListener("seeking", ()=>{ from=+getTimes().cur; });
         player.addEventListener("seeked",  ()=>{ const t=getTimes(); ping("seek", Object.assign({}, t, { from:String(from), to:t.cur })); });
 
+        // Sauvegarde dernier point si fermeture
         addEventListener("visibilitychange", ()=>{ if (document.visibilityState==="hidden") ping("hidden", getTimes()); });
         addEventListener("pagehide", ()=>{ ping("pagehide", getTimes()); });
       });
     })();
   </script>
-
-  <noscript>
-    <style>.cta{display:none}</style>
-    <div style="position:fixed;inset:auto 0 0 0;padding:12px;color:#fff;background:#111;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;text-align:center">
-      Activez JavaScript pour lire la vidéo et réserver un créneau.
-    </div>
-  </noscript>
 </body>
 </html>
-
