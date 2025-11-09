@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Vidéo</title>
 
-  <!-- Préconnexions utiles -->
+  <!-- Préconnexions Cloudflare Stream (player + assets) -->
   <link rel="dns-prefetch" href="https://iframe.cloudflarestream.com">
   <link rel="preconnect" href="https://iframe.cloudflarestream.com" crossorigin>
   <link rel="dns-prefetch" href="https://embed.cloudflarestream.com">
@@ -15,7 +15,7 @@
   <link rel="dns-prefetch" href="https://imagedelivery.net">
   <link rel="preconnect" href="https://imagedelivery.net" crossorigin>
 
-  <!-- Calendly : uniquement preconnect (chargé au clic) -->
+  <!-- Calendly chargé à la demande (pas de script ici) -->
   <link rel="dns-prefetch" href="https://calendly.com">
   <link rel="preconnect" href="https://calendly.com" crossorigin>
 
@@ -40,7 +40,7 @@
     .cta:active { transform: translateY(1px); }
     @media (min-width: 1024px) { .cta { padding: 22px 26px; font-size: 18px; border-radius:20px; } }
 
-    /* Modal Calendly (pré-initialisé mais caché → prêt instantanément au clic/fin vidéo) */
+    /* Modal Calendly */
     .modal { position:fixed; inset:0; z-index:50; display:none; background:rgba(0,0,0,.65); backdrop-filter:blur(2px); }
     .modal__panel { position:absolute; inset: var(--gap); background:#fff; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; box-shadow: 0 20px 60px rgba(0,0,0,.45); }
     .modal__head { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#0b1220; color:#fff; font:600 14px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
@@ -51,9 +51,8 @@
 
   <!-- SDK Stream pour les events/tracking -->
   <script src="https://embed.cloudflarestream.com/embed/sdk.latest.js?v=3" defer></script>
-  <!-- Calendly chargé à la demande (pas ici) -->
 
-  <!-- Préload dynamique du poster le plus tôt possible -->
+  <!-- Préload du poster le plus tôt possible (selon query) -->
   <script>
     (function preloadPoster(){
       try {
@@ -76,9 +75,8 @@
   <div class="stage">
     <div class="frame">
       <!-- Poster instantané -->
-      <img id="poster" alt=""
-           decoding="async" fetchpriority="high">
-      <!-- Iframe vidéo (cachée jusqu'à playing) -->
+      <img id="poster" alt="" decoding="async" fetchpriority="high">
+      <!-- Iframe vidéo (cachée jusqu'à ce qu'on la révèle) -->
       <iframe id="player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen hidden></iframe>
     </div>
   </div>
@@ -187,16 +185,19 @@
       addEventListener("keydown", (e)=>{ if(e.key==="Escape") hideCalendly(); });
 
       /* ============================
-       * 5) PLAYER : INJECTION À LA DEMANDE + REMPLACEMENT DU POSTER
+       * 5) PLAYER : INJECTION PAISIBLE + RÉVÉLATION SUR CLIC
        * ============================ */
       function onReady(cb){ (document.readyState === "complete" ? cb : addEventListener("load", cb)); }
 
-      function startPlayer(){
-        if (iframe.src) return;
-        iframe.src = playerSrc;
+      function startPlayer(opts = { showNow: false }){
+        if (!iframe.src) iframe.src = playerSrc;
+        if (opts.showNow) {
+          posterEl.hidden = true;
+          iframe.hidden = false; // montre le bouton Play si autoplay refusé
+        }
       }
 
-      // Démarre l’iframe dès que le bloc entre à l’écran, ou sur première interaction
+      // Préparer l'iframe quand la frame entre dans le viewport (mais sans l'afficher)
       if ('IntersectionObserver' in window) {
         const io = new IntersectionObserver(entries => {
           if (entries.some(e => e.isIntersecting)) { startPlayer(); io.disconnect(); }
@@ -205,23 +206,24 @@
       } else {
         startPlayer();
       }
-      const kick = () => { startPlayer(); removeEventListener('pointerdown', kick); };
-      addEventListener('pointerdown', kick, { passive:true });
 
-      // Clic sur le poster = démarrer / révéler
-      posterEl.addEventListener('click', () => { startPlayer(); });
+      // Clic sur le poster = on révèle immédiatement l’iframe (UI Play visible)
+      posterEl.addEventListener('click', () => { startPlayer({ showNow: true }); });
 
+      /* ============================
+       * 6) SDK Stream + Tracking
+       * ============================ */
       onReady(function(){
         if (typeof Stream !== "function") { console.error("SDK Stream indisponible"); return; }
         const player = Stream(iframe);
 
-        // Quand la vidéo joue, on swap poster -> iframe
+        // Dès que la vidéo joue, on s'assure que l'iframe est visible (au cas où)
         player.addEventListener("playing", () => {
           posterEl.hidden = true;
           iframe.hidden = false;
         });
 
-        // === Tracking à la seconde (identique à ta logique) ===
+        // --- Tracking à la seconde (identique à ta logique) ---
         let duration = 0, launched = false;
         const sentSeconds = new Set();
         let tick = null;
@@ -258,3 +260,4 @@
   </noscript>
 </body>
 </html>
+
