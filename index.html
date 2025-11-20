@@ -280,18 +280,50 @@
         function startTick() { if (!tick) tick = setInterval(() => { const t = getTimes(); const s = +t.cur; if (!sentSeconds.has(s)) { sentSeconds.add(s); ping("sec", t); } }, 1000); }
         function stopTick() { if (tick) { clearInterval(tick); tick = null; } }
 
-        player.addEventListener("durationchange", () => { const du = Math.floor(Number(player.duration || 0)); if (du > 0) duration = du; });
-        player.addEventListener("playing", () => { if (!launched) { launched = true; ping("launched", getTimes()); } startTick(); });
-        player.addEventListener("pause", () => { ping("pause", getTimes()); stopTick(); });
-        player.addEventListener("ended", () => { const t = getTimes(); const s = +t.cur; if (!sentSeconds.has(s)) { sentSeconds.add(s); ping("sec", t); } ping("completed", t); stopTick(); showCalendly(); });
+        // 4) Événements Player
 
-        // Seek (optionnel)
-        let from = 0; player.addEventListener("seeking", () => { from = +getTimes().cur; });
-        player.addEventListener("seeked", () => { const t = getTimes(); ping("seek", Object.assign({}, t, { from: String(from), to: t.cur })); });
+        player.addEventListener('play', () => {
+          ping('launched');
+        });
 
-        // Sauvegarde dernier point si fermeture
-        addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") ping("hidden", getTimes()); });
-        addEventListener("pagehide", () => { ping("pagehide", getTimes()); });
+        player.addEventListener('pause', () => {
+          player.currentTime.then(t => ping('pause', { time: Math.round(t) }));
+        });
+
+        player.addEventListener('ended', () => {
+          ping('completed');
+          showCalendly(); // Keep showing Calendly on video end
+        });
+
+        player.addEventListener('seeking', () => {
+          player.currentTime.then(t => ping('seek', { time: Math.round(t) }));
+        });
+
+        // Tracking de progression (toutes les 5 secondes)
+        let lastPct = 0;
+        player.addEventListener('timeupdate', () => {
+          player.currentTime.then(t => {
+            player.duration.then(d => {
+              if (d > 0) {
+                const pct = Math.round((t / d) * 100);
+                if (pct > lastPct + 5) { // On log tous les 5%
+                  lastPct = pct;
+                  ping('progress', { pct: pct, time: Math.round(t) });
+                }
+              }
+            });
+          });
+        });
+
+        // 5) Tracking Focus / Perte de Focus
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === 'visible') {
+            ping('focus_gained');
+          } else {
+            ping('focus_lost');
+          }
+        });
+        addEventListener("pagehide", () => { ping("pagehide"); });
       });
     })();
   </script>
