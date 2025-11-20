@@ -291,8 +291,8 @@
         });
 
         player.addEventListener('ended', () => {
-          player.currentTime.then(t => ping('completed', { time: Math.round(t) }));
-          showCalendly(); // Keep showing Calendly on video end
+          showCalendly(); // Open Calendly immediately
+          player.currentTime.then(t => ping('completed', { time: Math.round(t) })).catch(() => { });
         });
 
         player.addEventListener('seeking', () => {
