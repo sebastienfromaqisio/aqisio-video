@@ -318,13 +318,20 @@
 
         // 5) Tracking Focus / Perte de Focus
         document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === 'visible') {
-            ping('focus_gained');
-          } else {
-            ping('focus_lost');
-          }
+          player.currentTime.then(t => {
+            if (document.visibilityState === 'visible') {
+              ping('focus_gained', { time: Math.round(t) });
+            } else {
+              ping('focus_lost', { time: Math.round(t) });
+            }
+          });
         });
-        addEventListener("pagehide", () => { ping("pagehide"); });
+
+        addEventListener("pagehide", () => {
+          // pagehide doit être rapide, on ne peut pas attendre la promise de currentTime parfois
+          // On essaie quand même, ou on utilise la dernière valeur connue si on l'avait stockée
+          player.currentTime.then(t => ping("pagehide", { time: Math.round(t) })).catch(() => ping("pagehide"));
+        });
       });
     })();
   </script>
