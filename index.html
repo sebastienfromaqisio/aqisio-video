@@ -218,57 +218,37 @@
         : `sid_${id.slice(0, 8)}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
       const iframe = document.getElementById("player");
+      // Player API (pas /watch) — priorité perf: l’iframe se charge tout de suite
+      // Sous-titres fr par défaut via paramètre d'URL (BCP47: 'fr')
       iframe.src = `https://iframe.cloudflarestream.com/${id}?v=3&defaultTextTrack=fr`;
 
       /* ============================
-       * 3) TRACKING CORE (ROBUSTE)
+       * 3) TRACKING helper (non bloquant)
        * ============================ */
+      // MODIFICATION: On pointe vers l'API du SaaS (app.aqisio.com)
+      // Remplacez par l'URL de votre SaaS si différente
       const WEB_APP = "https://app.aqisio.com/api/track";
 
-      // État global du tracking
-      let state = {
-        playedSeconds: 0,   // Durée réelle cumulée (compteur)
-        lastPosition: 0,    // Dernière position connue
-        isPlaying: false,
-        duration: 0,        // Durée totale de la vidéo
-        maxPct: 0           // Pourcentage max atteint
-      };
-
-      // Fonction d'envoi (Beacon prioritaire)
-      function ping(ev, extra = {}) {
-        const base = {
-          ev, f, l, id, d, sessionId,
-          ua: navigator.userAgent,
-          w: String(innerWidth || 0),
-          h: String(innerHeight || 0),
-          ts: String(Date.now()),
-          // Données vitales
-          time: state.lastPosition.toFixed(1),
-          duration: state.playedSeconds.toFixed(1),
-          pct: state.duration > 0 ? Math.round((state.lastPosition / state.duration) * 100) : 0
-        };
-
-        const payload = new URLSearchParams(Object.assign(base, extra));
-
-        // Beacon pour les événements critiques (fermeture, pause, heartbeat)
-        if (navigator.sendBeacon && (ev === 'pagehide' || ev === 'heartbeat' || ev === 'launched')) {
-          navigator.sendBeacon(WEB_APP, payload);
-        } else {
-          // Fetch pour le reste (avec keepalive)
-          fetch(WEB_APP + "?" + payload.toString(), { method: "GET", mode: "no-cors", keepalive: true }).catch(() => { });
-        }
+      function ping(ev, extra) {
+        const base = { ev, f, l, id, d, sessionId, ua: navigator.userAgent, ref: document.referrer || "", w: String(innerWidth || 0), h: String(innerHeight || 0), ts: String(Date.now()) };
+        const payload = new URLSearchParams(Object.assign(base, extra || {}));
+        try {
+          if (navigator.sendBeacon) {
+            const blob = new Blob([payload.toString()], { type: "application/x-www-form-urlencoded" });
+            navigator.sendBeacon(WEB_APP, blob); return;
+          }
+        } catch (_) { }
+        fetch(WEB_APP + "?" + payload.toString(), { method: "GET", mode: "no-cors", keepalive: true }).catch(() => { });
       }
-
-      // Ping d'ouverture
       (function openedOnce() {
         const key = `aqi_opened_${id}_${d || "nodate"}`;
         const first = !localStorage.getItem(key);
         try { localStorage.setItem(key, "1"); } catch (e) { }
-        ping("opened", { first: first ? "1" : "0" });
+        ping("opened", { first: first ? "1" : "0", cur: "0", dur: "0" });
       })();
 
       /* ============================
-       * 4) CALENDLY MODAL
+       * 4) CALENDLY MODAL (pré-initialisé, réouvrable)
        * ============================ */
       const modal = document.getElementById("cal-modal");
       const closeBtn = document.getElementById("cal-close");
@@ -280,87 +260,77 @@
       addEventListener("keydown", (e) => { if (e.key === "Escape") hideCalendly(); });
 
       /* ============================
-       * 5) PLAYER LOGIC & HEARTBEAT
+       * 5) PLAYER + TRACKING 1s
        * ============================ */
       function onReady(cb) { (document.readyState === "complete" ? cb : addEventListener("load", cb)); }
-
       onReady(function () {
         if (typeof Stream !== "function") { console.error("SDK Stream indisponible"); return; }
         const player = Stream(iframe);
 
-        // --- Compteur de temps réel (Précision 1s) ---
-        setInterval(() => {
-          if (state.isPlaying) {
-            state.playedSeconds += 1;
-          }
-        }, 1000);
+        // --- Tracking à la seconde (client-side) ---
+        let duration = 0, launched = false;
+        const sentSeconds = new Set();
+        let tick = null;
+        const getTimes = () => {
+          const ct = Math.max(0, Math.floor(Number(player.currentTime || 0)));
+          const du = Math.max(0, Math.floor(Number(player.duration || duration || 0)));
+          if (!duration && du) duration = du;
+          return { cur: String(ct), dur: String(du) };
+        };
+        function startTick() { if (!tick) tick = setInterval(() => { const t = getTimes(); const s = +t.cur; if (!sentSeconds.has(s)) { sentSeconds.add(s); ping("sec", t); } }, 1000); }
+        function stopTick() { if (tick) { clearInterval(tick); tick = null; } }
 
-        // --- Heartbeat (Toutes les 5s) ---
-        // Envoie un signal régulier au serveur pour dire "je suis là et je regarde"
-        setInterval(() => {
-          if (state.isPlaying) {
-            player.currentTime.then(t => {
-              state.lastPosition = t;
-              ping("heartbeat");
-            });
-          }
-        }, 5000);
-
-        // --- Événements Player ---
+        // 4) Événements Player
 
         player.addEventListener('play', () => {
-          state.isPlaying = true;
-          player.duration.then(d => { state.duration = d; });
-          ping('launched', { time: 0 }); // On force time:0 pour initialiser
+          ping('launched');
         });
 
         player.addEventListener('pause', () => {
-          state.isPlaying = false;
-          player.currentTime.then(t => {
-            state.lastPosition = t;
-            ping('pause');
-          });
+          player.currentTime.then(t => ping('pause', { time: Math.round(t) }));
         });
 
         player.addEventListener('ended', () => {
-          state.isPlaying = false;
-          showCalendly();
-          ping('completed');
+          showCalendly(); // Open Calendly immediately
+          ping('calendly_auto_open'); // Track automatic opening
+          player.currentTime.then(t => ping('completed', { time: Math.round(t) })).catch(() => { });
         });
 
         player.addEventListener('seeking', () => {
-          // On ne fait rien de spécial, le heartbeat mettra à jour la position
-          player.currentTime.then(t => state.lastPosition = t);
+          player.currentTime.then(t => ping('seek', { time: Math.round(t) }));
         });
 
+        // Tracking de progression (toutes les 5 secondes)
+        let lastPct = 0;
         player.addEventListener('timeupdate', () => {
-          // Juste pour garder la position à jour localement
           player.currentTime.then(t => {
-            state.lastPosition = t;
+            player.duration.then(d => {
+              if (d > 0) {
+                const pct = Math.round((t / d) * 100);
+                if (pct > lastPct + 5) { // On log tous les 5%
+                  lastPct = pct;
+                  ping('progress', { pct: pct, time: Math.round(t) });
+                }
+              }
+            });
           });
         });
 
-        // --- Capture de Sortie (Page fermée / Onglet caché) ---
-
-        // 1. Visibilité (Onglet masqué)
+        // 5) Tracking Focus / Perte de Focus
         document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === 'hidden') {
-            state.isPlaying = false; // On arrête de compter le temps
-            ping('focus_lost');
-          } else {
-            // On ne remet pas isPlaying à true automatiquement, 
-            // car la vidéo peut être en pause. Le player enverra 'play' si ça reprend.
-            // Mais souvent Cloudflare met en pause auto si on change d'onglet.
-            player.getPaused().then(paused => {
-              if (!paused) state.isPlaying = true;
-            });
-            ping('focus_gained');
-          }
+          player.currentTime.then(t => {
+            if (document.visibilityState === 'visible') {
+              ping('focus_gained', { time: Math.round(t) });
+            } else {
+              ping('focus_lost', { time: Math.round(t) });
+            }
+          });
         });
 
-        // 2. Fermeture de page (Dernier soupir)
         addEventListener("pagehide", () => {
-          ping("pagehide");
+          // pagehide doit être rapide, on ne peut pas attendre la promise de currentTime parfois
+          // On essaie quand même, ou on utilise la dernière valeur connue si on l'avait stockée
+          player.currentTime.then(t => ping("pagehide", { time: Math.round(t) })).catch(() => ping("pagehide"));
         });
       });
     })();
